@@ -1,20 +1,20 @@
 import { BaseSimulation } from '../baseSimulation.js';
 
-function randomBetween(min, max) {
-  return Math.random() * (max - min) + min;
-}
-
 export class PerceptronSimulation extends BaseSimulation {
   setup() {
     this.history = [];
     this.points = [];
-    const { nPoints } = this.params;
-    this.weights = [randomBetween(-1, 1), randomBetween(-1, 1), randomBetween(-1, 1)];
+    const { nPoints, seed } = this.params;
+    this.weights = [
+      this.randomBetween(-1, 1, seed + 1),
+      this.randomBetween(-1, 1, seed + 2),
+      this.randomBetween(-1, 1, seed + 3)
+    ];
     this.epoch = 0;
 
     for (let i = 0; i < nPoints; i += 1) {
-      const x = randomBetween(-1, 1);
-      const y = randomBetween(-1, 1);
+      const x = this.randomBetween(-1, 1, seed + 10 + i * 2);
+      const y = this.randomBetween(-1, 1, seed + 11 + i * 2);
       const label = y > x ? 1 : -1;
       this.points.push({ x, y, label });
     }

@@ -1,9 +1,5 @@
 import { BaseSimulation } from '../baseSimulation.js';
 
-function randomBetween(min, max) {
-  return Math.random() * (max - min) + min;
-}
-
 function tanh(x) {
   return Math.tanh(x);
 }
@@ -26,16 +22,20 @@ export class NNSimulation extends BaseSimulation {
   setup() {
     this.history = [];
     this.points = [];
-    const { nPoints } = this.params;
+    const { nPoints, seed } = this.params;
     this.epoch = 0;
 
     const hidden = this.params.hiddenUnits || 4;
-    this.w1 = Array.from({ length: hidden }, () => [randomBetween(-1, 1), randomBetween(-1, 1), randomBetween(-1, 1)]);
-    this.w2 = Array.from({ length: hidden + 1 }, () => randomBetween(-1, 1));
+    this.w1 = Array.from({ length: hidden }, (_, i) => [
+      this.randomBetween(-1, 1, seed + 100 + i * 3),
+      this.randomBetween(-1, 1, seed + 101 + i * 3),
+      this.randomBetween(-1, 1, seed + 102 + i * 3)
+    ]);
+    this.w2 = Array.from({ length: hidden + 1 }, (_, i) => this.randomBetween(-1, 1, seed + 200 + i));
 
     for (let i = 0; i < nPoints; i += 1) {
-      const x = randomBetween(-1, 1);
-      const y = randomBetween(-1, 1);
+      const x = this.randomBetween(-1, 1, seed + 300 + i * 2);
+      const y = this.randomBetween(-1, 1, seed + 301 + i * 2);
       const label = x * x + y * y < 0.5 ? 1 : 0;
       this.points.push({ x, y, label });
     }

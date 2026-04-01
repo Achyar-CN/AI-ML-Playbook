@@ -181,15 +181,19 @@ button:hover {
   border-radius: 12px;
   box-shadow: 0 14px 22px rgba(15, 38, 71, 0.08);
   padding: 18px;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .simulation-root canvas {
   width: 100%;
+  max-width: 600px;
   height: auto;
   border-radius: 10px;
   border: 1px solid var(--border);
   background: #ffffff;
   display: block;
+  aspect-ratio: 1;
 }
 
 @media (max-width: 1000px) {
