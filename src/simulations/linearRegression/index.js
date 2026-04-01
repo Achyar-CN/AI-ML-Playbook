@@ -83,12 +83,8 @@ export class LinearRegressionSimulation extends BaseSimulation {
   }
 
   computeMetrics() {
-    let loss = 0;
-    this.points.forEach((pt) => {
-      const pred = this.predict(pt.x);
-      loss += (pred - pt.y) ** 2;
-    });
-    loss /= this.points.length;
-    return { loss };
+    const trueValues = this.points.map((pt) => pt.y);
+    const preds = this.points.map((pt) => this.predict(pt.x));
+    return this.computeRegressionMetrics(trueValues, preds);
   }
 }

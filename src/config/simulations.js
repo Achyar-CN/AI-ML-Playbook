@@ -9,6 +9,8 @@ export const simulations = [
     id: 'perceptron',
     title: 'Perceptron (linear separable)',
     class: PerceptronSimulation,
+    taskType: 'classification',
+    metricKeys: ['loss','accuracy','recall','precision','f1'],
     defaultParams: {
       learningRate: 0.1,
       epochs: 100,
@@ -27,6 +29,8 @@ export const simulations = [
     id: 'nn',
     title: 'Simple Neural Network',
     class: NNSimulation,
+    taskType: 'classification',
+    metricKeys: ['loss','accuracy','recall','precision','f1'],
     defaultParams: {
       learningRate: 0.1,
       epochs: 200,
@@ -46,6 +50,8 @@ export const simulations = [
     id: 'linearRegression',
     title: 'Linear Regression',
     class: LinearRegressionSimulation,
+    taskType: 'regression',
+    metricKeys: ['loss','mape','mae','rmse','nmae'],
     defaultParams: {
       learningRate: 0.1,
       epochs: 100,
@@ -63,6 +69,8 @@ export const simulations = [
     id: 'decisionTree',
     title: 'Decision Tree (simple)',
     class: DecisionTreeSimulation,
+    taskType: 'classification',
+    metricKeys: ['loss','accuracy','recall','precision','f1'],
     defaultParams: {
       epochs: 50,
       nPoints: 120,
@@ -78,6 +86,8 @@ export const simulations = [
     id: 'adaboost',
     title: 'AdaBoost (Ensemble)',
     class: AdaBoostSimulation,
+    taskType: 'classification',
+    metricKeys: ['loss','accuracy','recall','precision','f1'],
     defaultParams: {
       epochs: 20,
       nPoints: 120,

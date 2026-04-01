@@ -80,12 +80,8 @@ export class DecisionTreeSimulation extends BaseSimulation {
   }
 
   computeMetrics() {
-    let correct = 0;
-    this.points.forEach((pt) => {
-      const pred = this.predict(pt.x, pt.y);
-      if (pred === pt.label) correct += 1;
-    });
-    const accuracy = correct / this.points.length;
-    return { accuracy };
+    const labels = this.points.map((pt) => (pt.label === 1 ? 1 : 0));
+    const preds = this.points.map((pt) => (this.predict(pt.x, pt.y) === 1 ? 1 : 0));
+    return this.computeClassificationMetrics(labels, preds);
   }
 }

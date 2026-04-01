@@ -126,20 +126,20 @@ export class NNSimulation extends BaseSimulation {
   }
 
   computeMetrics() {
-    let correct = 0;
+    const labels = [];
+    const preds = [];
     let lossTotal = 0;
 
     this.points.forEach((pt) => {
       const { x, y, label } = pt;
       const { output } = this.forward(x, y);
       const prediction = output >= 0.5 ? 1 : 0;
-      if (prediction === label) correct += 1;
+      labels.push(label);
+      preds.push(prediction);
       lossTotal += 0.5 * (output - label) * (output - label);
     });
 
-    const n = this.points.length || 1;
-    const accuracy = correct / n;
-    const loss = lossTotal / n;
-    return { accuracy, loss };
+    const classMetrics = this.computeClassificationMetrics(labels, preds);
+    return { ...classMetrics, loss: lossTotal / (this.points.length || 1) };
   }
 }

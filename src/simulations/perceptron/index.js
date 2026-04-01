@@ -87,17 +87,8 @@ export class PerceptronSimulation extends BaseSimulation {
   }
 
   computeMetrics() {
-    let correct = 0;
-    let lossSum = 0;
-    this.points.forEach((pt) => {
-      const p = this.predict(pt.x, pt.y);
-      if (p === pt.label) correct += 1;
-      lossSum += Math.abs(pt.label - p) / 2;
-    });
-
-    const total = this.points.length || 1;
-    const accuracy = correct / total;
-    const loss = lossSum / total;
-    return { accuracy, loss };
+    const labels = this.points.map((pt) => (pt.label === 1 ? 1 : 0));
+    const preds = this.points.map((pt) => (this.predict(pt.x, pt.y) === 1 ? 1 : 0));
+    return this.computeClassificationMetrics(labels, preds);
   }
 }

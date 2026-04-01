@@ -5,8 +5,8 @@ export class UIController {
     this.stateManager = stateManager;
 
     this.statusText = document.getElementById('statusText');
-    this.accuracyCanvas = document.getElementById('accuracy-chart');
-    this.lossCanvas = document.getElementById('loss-chart');
+    this.metricsContainer = document.getElementById('metrics');
+    this.metricKeys = ['accuracy', 'loss'];
 
     this.controlsPanel.addEventListener('change', (event) => {
       const select = event.target.closest('select[data-sim-select]');
@@ -38,7 +38,24 @@ export class UIController {
     const sim = this.simulationManager.simulations ? this.simulationManager.simulations.get(id) : null;
     if (sim) {
       this.renderParams(sim);
+      this.setupMetrics(sim);
     }
+  }
+
+  setupMetrics(sim) {
+    this.metricKeys = sim.metricKeys || ['loss', 'accuracy'];
+    if (!this.metricsContainer) return;
+
+    this.metricsContainer.innerHTML = '';
+    this.metricKeys.forEach((key) => {
+      const card = document.createElement('div');
+      card.className = 'metric-card';
+      card.innerHTML = `
+        <h3>${key.toUpperCase()}</h3>
+        <div class="metric-value" data-metric="${key}">n/a</div>
+      `;
+      this.metricsContainer.appendChild(card);
+    });
   }
 
   renderMenu(simulations) {
@@ -124,64 +141,29 @@ export class UIController {
   }
 
   renderMetrics(history) {
-    if (!this.accuracyCanvas || !this.lossCanvas) return;
+    if (!this.metricsContainer) return;
 
-    const store = { accuracy: this.accuracyCanvas, loss: this.lossCanvas };
-
-    const scaleData = (values, { min, max }) =>
-      values.map((val) => ((val - min) / (max - min || 1)) * (80))
-    ;
-
-    ['accuracy', 'loss'].forEach((key) => {
-      const canvas = store[key];
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      if (!history.length) {
-        ctx.fillStyle = '#66788e';
-        ctx.font = '12px sans-serif';
-        ctx.fillText('No data yet', 10, 50);
-        return;
-      }
-
-      const values = history.map((item) => item[key]);
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const scaled = scaleData(values, { min, max });
-
-      // axis
-      ctx.strokeStyle = '#d5e0ea';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, canvas.height - 18);
-      ctx.lineTo(canvas.width, canvas.height - 18);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(35, 0);
-      ctx.lineTo(35, canvas.height);
-      ctx.stroke();
-
-      // line
-      ctx.strokeStyle = key === 'accuracy' ? '#2f6ee7' : '#d46f17';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      scaled.forEach((sv, idx) => {
-        const x = 35 + ((canvas.width - 40) / Math.max(scaled.length - 1, 1)) * idx;
-        const y = canvas.height - 18 - sv;
-        if (idx === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
+    if (!history || !history.length) {
+      this.metricsContainer.querySelectorAll('.metric-value').forEach((valueEl) => {
+        valueEl.textContent = 'n/a';
       });
-      ctx.stroke();
+      return;
+    }
 
-      // values text
-      ctx.fillStyle = '#495a74';
-      ctx.font = '11px sans-serif';
-      ctx.fillText(`${key === 'accuracy' ? 'Acc' : 'Loss'} min: ${min.toFixed(3)}`, 40, 14);
-      ctx.fillText(`max: ${max.toFixed(3)}`, 40, 28);
+    const latest = history[history.length - 1];
+
+    this.metricKeys.forEach((key) => {
+      const valueEl = this.metricsContainer.querySelector(`.metric-value[data-metric="${key}"]`);
+      if (!valueEl) return;
+
+      const value = latest[key];
+      if (value === undefined || value === null || Number.isNaN(value)) {
+        valueEl.textContent = 'n/a';
+      } else {
+        const format = ['loss', 'mape', 'mae', 'rmse', 'nmae'].includes(key) ? 4 : 3;
+        const suffix = key === 'mape' ? '%' : key === 'accuracy' ? '%' : '';
+        valueEl.textContent = `${(key === 'accuracy' ? value * 100 : value).toFixed(format)}${suffix}`;
+      }
     });
   }
 }
