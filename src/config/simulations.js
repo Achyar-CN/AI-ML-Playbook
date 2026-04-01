@@ -75,11 +75,15 @@ export const simulations = [
       epochs: 50,
       nPoints: 120,
       seed: 42,
+      stepMode: false,
+      stepSpeed: 1000,
     },
     paramControls: [
       { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 200, step: 1, description: 'Number of complete passes through the training data.' },
       { name: 'nPoints', label: 'Points', type: 'number', min: 20, max: 1000, step: 10, description: 'Number of data points to generate for training.' },
       { name: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, step: 1, description: 'Seed for random number generation to ensure reproducible results.' },
+      { name: 'stepMode', label: 'Step-by-Step Mode', type: 'boolean', description: 'Enable step-by-step visualization of the decision tree building process.' },
+      { name: 'stepSpeed', label: 'Step Speed (ms)', type: 'number', min: 100, max: 5000, step: 100, description: 'Speed of step-by-step visualization in milliseconds.' },
     ],
   },
   {
