@@ -150,23 +150,30 @@ body {
 }
 
 .simulation-root {
-  background: #f8fbff;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 14px 22px rgba(15, 38, 71, 0.08);
-  padding: 18px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
   flex: 1;
 }
 
 .simulation-root canvas {
   width: 100%;
-  max-width: 600px;
-  height: auto;
-  border-radius: 10px;
-  border: 1px solid var(--border);
+  height: calc(100vh - 220px);
+  max-width: 100%;
+  border-radius: 0;
+  border: none;
   background: #ffffff;
   display: block;
+  box-shadow: none;
   aspect-ratio: 1;
+}
+
+@media (max-width: 1200px) {
+  .simulation-root canvas {
+    height: calc(70vh - 160px);
+  }
 }
 
 .controls {
