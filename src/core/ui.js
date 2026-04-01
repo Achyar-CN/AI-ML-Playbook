@@ -6,7 +6,8 @@ export class UIController {
 
     this.statusText = document.getElementById('statusText');
     this.metricsContainer = document.getElementById('metrics');
-    this.metricKeys = ['accuracy', 'loss'];
+    this.metricKeys = [];
+    this.metricCanvasSize = { width: 420, height: 160 };
 
     this.controlsPanel.addEventListener('change', (event) => {
       const select = event.target.closest('select[data-sim-select]');
@@ -50,10 +51,12 @@ export class UIController {
     this.metricKeys.forEach((key) => {
       const card = document.createElement('div');
       card.className = 'metric-card';
-      card.innerHTML = `
-        <h3>${key.toUpperCase()}</h3>
-        <div class="metric-value" data-metric="${key}">n/a</div>
-      `;
+      const canvas = document.createElement('canvas');
+      canvas.setAttribute('data-metric', key);
+      canvas.width = this.metricCanvasSize.width;
+      canvas.height = this.metricCanvasSize.height;
+      card.innerHTML = `<h3>${key.toUpperCase()}</h3>`;
+      card.appendChild(canvas);
       this.metricsContainer.appendChild(card);
     });
   }
@@ -143,27 +146,86 @@ export class UIController {
   renderMetrics(history) {
     if (!this.metricsContainer) return;
 
-    if (!history || !history.length) {
-      this.metricsContainer.querySelectorAll('.metric-value').forEach((valueEl) => {
-        valueEl.textContent = 'n/a';
-      });
-      return;
-    }
-
-    const latest = history[history.length - 1];
-
     this.metricKeys.forEach((key) => {
-      const valueEl = this.metricsContainer.querySelector(`.metric-value[data-metric="${key}"]`);
-      if (!valueEl) return;
+      const canvas = this.metricsContainer.querySelector(`canvas[data-metric="${key}"]`);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      const padding = 36;
 
-      const value = latest[key];
-      if (value === undefined || value === null || Number.isNaN(value)) {
-        valueEl.textContent = 'n/a';
-      } else {
-        const format = ['loss', 'mape', 'mae', 'rmse', 'nmae'].includes(key) ? 4 : 3;
-        const suffix = key === 'mape' ? '%' : key === 'accuracy' ? '%' : '';
-        valueEl.textContent = `${(key === 'accuracy' ? value * 100 : value).toFixed(format)}${suffix}`;
+      ctx.clearRect(0, 0, w, h);
+
+      if (!history || history.length === 0) {
+        ctx.fillStyle = '#64748b';
+        ctx.font = '14px sans-serif';
+        ctx.fillText('No data yet', w * 0.35, h / 2);
+        return;
       }
+
+      const values = history.map((item) => item[key] !== undefined ? item[key] : 0);
+      const maxY = Math.max(...values, 1e-3);
+      const minY = Math.min(...values, 0);
+      const yRange = maxY - minY || 1;
+
+      // axis lines
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padding, padding);
+      ctx.lineTo(padding, h - padding);
+      ctx.lineTo(w - padding, h - padding);
+      ctx.stroke();
+
+      // tick labels
+      ctx.fillStyle = '#334155';
+      ctx.font = '11px sans-serif';
+      ctx.fillText('Epoch', w * 0.78, h - 10);
+      ctx.fillText(key.toUpperCase(), 8, 14);
+
+      const steps = Math.min(history.length, 5);
+      for (let i = 0; i <= steps; i += 1) {
+        const yVal = minY + ((steps - i) / steps) * yRange;
+        const yPos = padding + ((h - 2 * padding) * i / steps);
+
+        ctx.beginPath();
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.moveTo(padding, yPos);
+        ctx.lineTo(w - padding, yPos);
+        ctx.stroke();
+
+        ctx.fillStyle = '#475569';
+        ctx.fillText(yVal.toFixed(3), 4, yPos + 4);
+      }
+
+      const n = history.length;
+      ctx.beginPath();
+      ctx.strokeStyle = key === 'loss' ? '#ef4444' : '#2563eb';
+      ctx.lineWidth = 2.5;
+
+      for (let i = 0; i < n; i += 1) {
+        const x = padding + ((w - 2 * padding) * (i) / Math.max(n - 1, 1));
+        const y = h - padding - ((values[i] - minY) / yRange) * (h - 2 * padding);
+
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+
+        ctx.fillStyle = '#1d4ed8';
+        ctx.beginPath();
+        ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.stroke();
+
+      const latest = values[values.length - 1];
+      ctx.fillStyle = '#0f172a';
+      ctx.font = '12px sans-serif';
+      const textSuffix = key === 'accuracy' ? '%' : key === 'mape' ? '%' : '';
+      const displayValue = key === 'accuracy' ? (latest * 100) : latest;
+      ctx.fillText(`Last: ${displayValue.toFixed(3)}${textSuffix}`, w - padding - 100, padding + 12);
     });
   }
 }
