@@ -1,0 +1,58 @@
+:root {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  --bg: #f8f9fa;
+  --panel: #ffffff;
+  --border: #e1e5ea;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: #222;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.param-box {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.param-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.param-field input {
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+}
+
+.topbar { margin-bottom: 12px; }
+
+.simulation-root canvas {
+  border: 1px solid var(--border);
+  background: #fff;
+}
