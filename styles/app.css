@@ -95,14 +95,19 @@ body {
 }
 
 .output-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 1fr minmax(300px, 380px);
+  gap: 16px;
+  align-items: start;
+}
+
+.visualization-panel {
+  width: 100%;
 }
 
 .metrics {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
