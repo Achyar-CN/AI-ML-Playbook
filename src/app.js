@@ -4,12 +4,12 @@ import { StateManager } from './core/state.js';
 import { simulations } from './config/simulations.js';
 
 export class App {
-  constructor({ root, sidebar }) {
+  constructor({ root, controlsPanel }) {
     this.root = root;
-    this.sidebar = sidebar;
+    this.controlsPanel = controlsPanel;
     this.state = new StateManager();
     this.simulationManager = new SimulationManager({ root });
-    this.ui = new UIController({ sidebar, simulationManager: this.simulationManager, stateManager: this.state });
+    this.ui = new UIController({ controlsPanel, simulationManager: this.simulationManager, stateManager: this.state });
   }
 
   init() {

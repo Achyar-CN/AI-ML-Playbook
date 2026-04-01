@@ -1,6 +1,6 @@
 export class UIController {
-  constructor({ sidebar, simulationManager, stateManager }) {
-    this.sidebar = sidebar;
+  constructor({ controlsPanel, simulationManager, stateManager }) {
+    this.controlsPanel = controlsPanel;
     this.simulationManager = simulationManager;
     this.stateManager = stateManager;
 
@@ -8,7 +8,7 @@ export class UIController {
     this.accuracyCanvas = document.getElementById('accuracy-chart');
     this.lossCanvas = document.getElementById('loss-chart');
 
-    this.sidebar.addEventListener('change', (event) => {
+    this.controlsPanel.addEventListener('change', (event) => {
       const select = event.target.closest('select[data-sim-select]');
       if (select) {
         const selected = select.value;
@@ -27,13 +27,11 @@ export class UIController {
       }
     });
 
-    this.paramBox = document.createElement('div');
-    this.paramBox.className = 'param-box';
-    this.sidebar.appendChild(this.paramBox);
+    this.paramBox = document.getElementById('param-box');
   }
 
   setSelectedSim(id) {
-    const select = this.sidebar.querySelector('select[data-sim-select]');
+    const select = this.controlsPanel.querySelector('select[data-sim-select]');
     if (select) {
       select.value = id;
     }
@@ -52,7 +50,7 @@ export class UIController {
       option.textContent = sim.title;
       select.appendChild(option);
     });
-    this.sidebar.appendChild(select);
+    this.controlsPanel.insertBefore(select, this.paramBox);
 
     const controls = document.createElement('div');
     controls.className = 'controls';
@@ -60,9 +58,8 @@ export class UIController {
       <button id="start-btn">Start</button>
       <button id="pause-btn">Pause</button>
       <button id="reset-btn">Reset</button>
-      <button id="random-btn">New Data</button>
     `;
-    this.sidebar.appendChild(controls);
+    this.controlsPanel.insertBefore(controls, this.paramBox);
 
     controls.querySelector('#start-btn').addEventListener('click', () => {
       this.setStatus('Running');
@@ -74,11 +71,6 @@ export class UIController {
     });
     controls.querySelector('#reset-btn').addEventListener('click', () => {
       this.setStatus('Ready');
-      this.simulationManager.reset();
-      this.renderMetrics([]);
-    });
-    controls.querySelector('#random-btn').addEventListener('click', () => {
-      this.setStatus('New dataset');
       this.simulationManager.reset();
       this.renderMetrics([]);
     });
@@ -113,6 +105,14 @@ export class UIController {
 
       wrapper.appendChild(label);
       wrapper.appendChild(input);
+
+      if (field.description) {
+        const desc = document.createElement('div');
+        desc.className = 'description';
+        desc.textContent = field.description;
+        wrapper.appendChild(desc);
+      }
+
       this.paramBox.appendChild(wrapper);
     });
   }

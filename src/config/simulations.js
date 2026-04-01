@@ -17,10 +17,10 @@ export const simulations = [
       seed: 42,
     },
     paramControls: [
-      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 1, step: 0.001 },
-      { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 500, step: 1 },
-      { name: 'nPoints', label: 'Points', type: 'number', min: 20, max: 1000, step: 10 },
-      { name: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, step: 1 },
+      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 1, step: 0.001, description: 'Controls how much the weights are updated each step. Higher values learn faster but may overshoot.' },
+      { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 500, step: 1, description: 'Number of complete passes through the training data.' },
+      { name: 'nPoints', label: 'Points', type: 'number', min: 20, max: 1000, step: 10, description: 'Number of data points to generate for training.' },
+      { name: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, step: 1, description: 'Seed for random number generation to ensure reproducible results.' },
     ],
   },
   {
@@ -35,11 +35,11 @@ export const simulations = [
       seed: 42,
     },
     paramControls: [
-      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 1, step: 0.001 },
-      { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 1000, step: 1 },
-      { name: 'hiddenUnits', label: 'Hidden Units', type: 'number', min: 1, max: 20, step: 1 },
-      { name: 'nPoints', label: 'Points', type: 'number', min: 20, max: 1000, step: 10 },
-      { name: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, step: 1 },
+      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 1, step: 0.001, description: 'Controls how much the weights are updated each step. Higher values learn faster but may overshoot.' },
+      { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 1000, step: 1, description: 'Number of complete passes through the training data.' },
+      { name: 'hiddenUnits', label: 'Hidden Units', type: 'number', min: 1, max: 20, step: 1, description: 'Number of neurons in the hidden layer. More units can learn complex patterns.' },
+      { name: 'nPoints', label: 'Points', type: 'number', min: 20, max: 1000, step: 10, description: 'Number of data points to generate for training.' },
+      { name: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, step: 1, description: 'Seed for random number generation to ensure reproducible results.' },
     ],
   },
   {
@@ -53,10 +53,10 @@ export const simulations = [
       seed: 42,
     },
     paramControls: [
-      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 1, step: 0.001 },
-      { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 500, step: 1 },
-      { name: 'nPoints', label: 'Points', type: 'number', min: 20, max: 1000, step: 10 },
-      { name: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, step: 1 },
+      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 1, step: 0.001, description: 'Controls how much the weights are updated each step. Higher values learn faster but may overshoot.' },
+      { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 500, step: 1, description: 'Number of complete passes through the training data.' },
+      { name: 'nPoints', label: 'Points', type: 'number', min: 20, max: 1000, step: 10, description: 'Number of data points to generate for training.' },
+      { name: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, step: 1, description: 'Seed for random number generation to ensure reproducible results.' },
     ],
   },
   {
@@ -69,9 +69,9 @@ export const simulations = [
       seed: 42,
     },
     paramControls: [
-      { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 200, step: 1 },
-      { name: 'nPoints', label: 'Points', type: 'number', min: 20, max: 1000, step: 10 },
-      { name: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, step: 1 },
+      { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 200, step: 1, description: 'Number of complete passes through the training data.' },
+      { name: 'nPoints', label: 'Points', type: 'number', min: 20, max: 1000, step: 10, description: 'Number of data points to generate for training.' },
+      { name: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, step: 1, description: 'Seed for random number generation to ensure reproducible results.' },
     ],
   },
   {
@@ -84,9 +84,9 @@ export const simulations = [
       seed: 42,
     },
     paramControls: [
-      { name: 'epochs', label: 'Boosting Rounds', type: 'number', min: 1, max: 50, step: 1 },
-      { name: 'nPoints', label: 'Points', type: 'number', min: 20, max: 1000, step: 10 },
-      { name: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, step: 1 },
+      { name: 'epochs', label: 'Boosting Rounds', type: 'number', min: 1, max: 50, step: 1, description: 'Number of weak learners to combine in the ensemble.' },
+      { name: 'nPoints', label: 'Points', type: 'number', min: 20, max: 1000, step: 10, description: 'Number of data points to generate for training.' },
+      { name: 'seed', label: 'Random Seed', type: 'number', min: 0, max: 9999, step: 1, description: 'Seed for random number generation to ensure reproducible results.' },
     ],
   },
 ];
