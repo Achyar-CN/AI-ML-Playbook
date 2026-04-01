@@ -103,6 +103,16 @@ body {
 
 .visualization-panel {
   width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.simulation-root {
+  width: 100%;
+  max-width: 860px;
+  min-height: 620px;
+  margin: 0 auto;
 }
 
 .metrics {
