@@ -40,8 +40,8 @@ export class PerceptronSimulation extends BaseSimulation {
     });
     this.epoch += 1;
 
-    const { accuracy, loss } = this.computeMetrics();
-    this.history.push({ epoch: this.epoch, accuracy, loss });
+    const metrics = this.computeMetrics();
+    this.history.push({ epoch: this.epoch, ...metrics });
   }
 
   render() {

@@ -40,8 +40,8 @@ export class LinearRegressionSimulation extends BaseSimulation {
 
     this.epoch += 1;
 
-    const { loss } = this.computeMetrics();
-    this.history.push({ epoch: this.epoch, loss });
+    const metrics = this.computeMetrics();
+    this.history.push({ epoch: this.epoch, ...metrics });
   }
 
   render() {

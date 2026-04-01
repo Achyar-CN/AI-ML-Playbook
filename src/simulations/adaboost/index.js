@@ -79,8 +79,8 @@ export class AdaBoostSimulation extends BaseSimulation {
 
     this.epoch += 1;
 
-    const { accuracy } = this.computeMetrics();
-    this.history.push({ epoch: this.epoch, accuracy });
+    const metrics = this.computeMetrics();
+    this.history.push({ epoch: this.epoch, ...metrics });
   }
 
   predict(x, y) {

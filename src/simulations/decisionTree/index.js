@@ -45,8 +45,8 @@ export class DecisionTreeSimulation extends BaseSimulation {
     if (this.epoch >= this.params.epochs) return;
     this.epoch += 1;
 
-    const { accuracy } = this.computeMetrics();
-    this.history.push({ epoch: this.epoch, accuracy });
+    const metrics = this.computeMetrics();
+    this.history.push({ epoch: this.epoch, ...metrics });
   }
 
   render() {
