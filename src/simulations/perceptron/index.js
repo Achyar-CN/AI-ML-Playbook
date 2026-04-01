@@ -6,6 +6,7 @@ function randomBetween(min, max) {
 
 export class PerceptronSimulation extends BaseSimulation {
   setup() {
+    this.history = [];
     this.points = [];
     const { nPoints } = this.params;
     this.weights = [randomBetween(-1, 1), randomBetween(-1, 1), randomBetween(-1, 1)];
@@ -38,6 +39,9 @@ export class PerceptronSimulation extends BaseSimulation {
       this.weights[2] += lr * error * 1;
     });
     this.epoch += 1;
+
+    const { accuracy, loss } = this.computeMetrics();
+    this.history.push({ epoch: this.epoch, accuracy, loss });
   }
 
   render() {
@@ -76,5 +80,24 @@ export class PerceptronSimulation extends BaseSimulation {
     this.ctx.fillStyle = '#333';
     this.ctx.font = '14px sans-serif';
     this.ctx.fillText(`Epoch: ${this.epoch}`, 10, 20);
+
+    const metrics = this.computeMetrics();
+    this.ctx.fillText(`Acc: ${ (metrics.accuracy*100).toFixed(1) }%`, 10, 40);
+    this.ctx.fillText(`Loss: ${metrics.loss.toFixed(3)}`, 10, 58);
+  }
+
+  computeMetrics() {
+    let correct = 0;
+    let lossSum = 0;
+    this.points.forEach((pt) => {
+      const p = this.predict(pt.x, pt.y);
+      if (p === pt.label) correct += 1;
+      lossSum += Math.abs(pt.label - p) / 2;
+    });
+
+    const total = this.points.length || 1;
+    const accuracy = correct / total;
+    const loss = lossSum / total;
+    return { accuracy, loss };
   }
 }

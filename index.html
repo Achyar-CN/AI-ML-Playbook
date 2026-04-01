@@ -11,8 +11,24 @@
       <aside id="sidebar" class="sidebar"></aside>
       <main id="main" class="main">
         <header class="topbar">
-          <h1>ML/AI Simulation Playground</h1>
+          <div>
+            <h1>ML/AI Simulation Playground</h1>
+            <small>Interaktif: klik start / pause / reset dan lihat metrik realtime.</small>
+          </div>
+          <div id="statusText" class="status-text">Status: Ready</div>
         </header>
+
+        <section id="metrics" class="metrics">
+          <div class="metric-card">
+            <h3>Accuracy</h3>
+            <canvas id="accuracy-chart" width="360" height="120"></canvas>
+          </div>
+          <div class="metric-card">
+            <h3>Loss</h3>
+            <canvas id="loss-chart" width="360" height="120"></canvas>
+          </div>
+        </section>
+
         <section id="simulation-root" class="simulation-root"></section>
       </main>
     </div>

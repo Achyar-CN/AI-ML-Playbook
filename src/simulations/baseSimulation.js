@@ -4,6 +4,7 @@ export class BaseSimulation {
     this.params = params;
     this.canvas = null;
     this.ctx = null;
+    this.history = [];
   }
 
   init() {
@@ -30,5 +31,9 @@ export class BaseSimulation {
 
   render() {
     throw new Error('render() not implemented');
+  }
+
+  computeMetrics() {
+    return { accuracy: 0, loss: 0 };
   }
 }

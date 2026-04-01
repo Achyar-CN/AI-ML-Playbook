@@ -16,6 +16,10 @@ export class App {
     this.simulationManager.registerSimulations(simulations);
     this.ui.renderMenu(simulations);
 
+    this.simulationManager.onMetricsUpdate = (history) => {
+      this.ui.renderMetrics(history);
+    };
+
     const activeSim = this.state.get('sim', 'perceptron');
     this.simulationManager.selectSimulation(activeSim);
 

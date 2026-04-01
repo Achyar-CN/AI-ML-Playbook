@@ -24,6 +24,7 @@ function sigmoidDeriv(x) {
 
 export class NNSimulation extends BaseSimulation {
   setup() {
+    this.history = [];
     this.points = [];
     const { nPoints } = this.params;
     this.epoch = 0;
@@ -78,6 +79,9 @@ export class NNSimulation extends BaseSimulation {
     });
 
     this.epoch += 1;
+
+    const { accuracy, loss } = this.computeMetrics();
+    this.history.push({ epoch: this.epoch, accuracy, loss });
   }
 
   predict(x, y) {
@@ -113,8 +117,29 @@ export class NNSimulation extends BaseSimulation {
       this.ctx.stroke();
     });
 
+    const metrics = this.computeMetrics();
     this.ctx.fillStyle = '#333';
     this.ctx.font = '14px sans-serif';
     this.ctx.fillText(`Epoch: ${this.epoch}`, 10, 20);
+    this.ctx.fillText(`Acc: ${(metrics.accuracy*100).toFixed(1)}%`, 10, 40);
+    this.ctx.fillText(`Loss: ${metrics.loss.toFixed(3)}`, 10, 58);
+  }
+
+  computeMetrics() {
+    let correct = 0;
+    let lossTotal = 0;
+
+    this.points.forEach((pt) => {
+      const { x, y, label } = pt;
+      const { output } = this.forward(x, y);
+      const prediction = output >= 0.5 ? 1 : 0;
+      if (prediction === label) correct += 1;
+      lossTotal += 0.5 * (output - label) * (output - label);
+    });
+
+    const n = this.points.length || 1;
+    const accuracy = correct / n;
+    const loss = lossTotal / n;
+    return { accuracy, loss };
   }
 }

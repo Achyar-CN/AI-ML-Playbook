@@ -6,6 +6,7 @@ export class SimulationManager {
     this.simulations = new Map();
     this.current = null;
     this.frame = null;
+    this.onMetricsUpdate = null;
   }
 
   registerSimulations(simulations) {
@@ -33,6 +34,11 @@ export class SimulationManager {
     this.currentId = id;
     this.currentMeta = meta;
     this.current.init();
+
+    if (typeof this.onMetricsUpdate === 'function') {
+      this.onMetricsUpdate(this.current.history || []);
+    }
+
     return this.current;
   }
 
@@ -49,6 +55,11 @@ export class SimulationManager {
     const loop = () => {
       this.current.step();
       this.current.render();
+
+      if (typeof this.onMetricsUpdate === 'function') {
+        this.onMetricsUpdate(this.current.history || []);
+      }
+
       this.frame = requestAnimationFrame(loop);
     };
     this.frame = requestAnimationFrame(loop);
