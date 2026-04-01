@@ -4,12 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ML Playground</title>
-    <script type="module" crossorigin src="/AI-ML-Playbook/assets/index-JT4Oe1va.js"></script>
-    <link rel="stylesheet" crossorigin href="/AI-ML-Playbook/assets/index-CRqUplER.css">
+    <script type="module" crossorigin src="/AI-ML-Playbook/assets/index-_PaXnIw-.js"></script>
+    <link rel="stylesheet" crossorigin href="/AI-ML-Playbook/assets/index-ChYY_zBf.css">
   </head>
   <body>
     <div id="app" class="app">
-      <aside id="sidebar" class="sidebar"></aside>
       <main id="main" class="main">
         <header class="topbar">
           <div>
@@ -19,18 +18,27 @@
           <div id="statusText" class="status-text">Status: Ready</div>
         </header>
 
-        <section id="metrics" class="metrics">
-          <div class="metric-card">
-            <h3>Accuracy</h3>
-            <canvas id="accuracy-chart" width="360" height="120"></canvas>
-          </div>
-          <div class="metric-card">
-            <h3>Loss</h3>
-            <canvas id="loss-chart" width="360" height="120"></canvas>
-          </div>
-        </section>
+        <div class="content-grid">
+          <aside id="controls" class="controls-panel">
+            <h2>Parameters</h2>
+            <div id="param-box" class="param-box"></div>
+          </aside>
 
-        <section id="simulation-root" class="simulation-root"></section>
+          <section class="output-section">
+            <div id="metrics" class="metrics">
+              <div class="metric-card">
+                <h3>Accuracy</h3>
+                <canvas id="accuracy-chart" width="360" height="120"></canvas>
+              </div>
+              <div class="metric-card">
+                <h3>Loss</h3>
+                <canvas id="loss-chart" width="360" height="120"></canvas>
+              </div>
+            </div>
+
+            <section id="simulation-root" class="simulation-root"></section>
+          </section>
+        </div>
       </main>
     </div>
   </body>
