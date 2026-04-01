@@ -14,15 +14,18 @@ export class DecisionTreeSimulation extends BaseSimulation {
     this.informationGain = 0;
     this.stepTimer = 0; // timer for step-by-step mode
 
+    // Generate data with noisy, nontrivial boundary so the tree must find partition.
     for (let i = 0; i < nPoints; i += 1) {
       const x = this.randomBetween(-1, 1, seed + 10 + i * 2);
       const y = this.randomBetween(-1, 1, seed + 11 + i * 2);
-      const label = x > 0 ? 1 : 0;
+      const noise = this.randomBetween(-0.3, 0.3, seed + 1000 + i);
+      // class depends on a diagonal boundary plus random noise, not just x sign
+      const label = (x + 0.6 * y + noise > 0) ? 1 : 0;
       this.points.push({ x, y, label });
     }
 
-    this.currentThreshold = this.randomBetween(-0.8, 0.8, seed + 999);
-    this.buildTree(this.currentThreshold);
+    // Start with no split, the algorithm will search and apply the best split
+    this.tree = null;
   }
 
   // Calculate entropy for a set of labels
