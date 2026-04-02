@@ -20,14 +20,15 @@ export class SimulationManager {
     });
   }
 
-  selectSimulation(id) {
+  selectSimulation(id, initialParams = {}) {
     if (!this.simulations.has(id)) return;
 
     this.stop();
     this.root.innerHTML = '';
 
     const meta = this.simulations.get(id);
-    const params = { ...meta.defaultParams };
+    // Merge defaultParams with any caller-supplied initialParams (e.g. from URL state)
+    const params = { ...meta.defaultParams, ...initialParams };
 
     const instance = new meta.class({ container: this.root, params });
 

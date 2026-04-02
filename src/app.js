@@ -20,8 +20,22 @@ export class App {
       this.ui.renderMetrics(history);
     };
 
-    const activeSim = this.state.get('sim', 'perceptron');
-    this.simulationManager.selectSimulation(activeSim);
+    const activeSim = this.state.get('sim', simulations[0]?.id || 'perceptron');
+
+    // Collect any param values saved in URL hash so the simulation starts
+    // with the exact same values shown in the sidebar.
+    const activeMeta = simulations.find(s => s.id === activeSim);
+    const savedParams = {};
+    const allControls = [
+      ...(activeMeta?.dataParamControls || []),
+      ...(activeMeta?.paramControls     || []),
+    ];
+    allControls.forEach(f => {
+      const v = this.state.get(f.name, undefined);
+      if (v !== undefined) savedParams[f.name] = v;
+    });
+
+    this.simulationManager.selectSimulation(activeSim, savedParams);
 
     this.state.onUpdate = (state) => {
       if (state.sim && state.sim !== this.simulationManager.currentId) {

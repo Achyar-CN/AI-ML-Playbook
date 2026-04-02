@@ -55,10 +55,14 @@ export class UIController {
 
   _updateEpoch(history) {
     if (!this.epochDisplay) return;
-    if (!history || history.length === 0) { this.epochDisplay.textContent = '—'; return; }
-    const last     = history[history.length - 1];
-    const dp       = this.simulationManager.currentMeta?.defaultParams;
-    const maxEpoch = dp ? (dp.epochs ?? dp.maxDepth ?? '?') : '?';
+    // Always read max from the live params (reflects slider changes instantly)
+    const p        = this.simulationManager.current?.params;
+    const maxEpoch = p ? (p.epochs ?? p.maxDepth ?? '?') : '?';
+    if (!history || history.length === 0) {
+      this.epochDisplay.textContent = `— / ${maxEpoch}`;
+      return;
+    }
+    const last = history[history.length - 1];
     this.epochDisplay.textContent = `${last.epoch} / ${maxEpoch}`;
   }
 
@@ -289,7 +293,16 @@ export class UIController {
     inp.value = value;
     inp.setAttribute('data-param-name', field.name);
 
-    inp.addEventListener('input', () => { valDisp.textContent = inp.value; });
+    inp.addEventListener('input', () => {
+      valDisp.textContent = inp.value;
+      // Keep epoch counter in sync while scrubbing epochs/maxDepth sliders
+      if (field.name === 'epochs' || field.name === 'maxDepth') {
+        if (this.simulationManager.current) {
+          this.simulationManager.current.params[field.name] = Number(inp.value);
+        }
+        this._updateEpoch(this.simulationManager.current?.history || []);
+      }
+    });
     inp.addEventListener('change', () => this._applyParam(field.name, Number(inp.value)));
 
     wrapper.appendChild(inp);
@@ -312,34 +325,66 @@ export class UIController {
   }
 
   // ── Metrics ──────────────────────────────────────────────────
+  // Concise descriptions + business impact for each metric
+  static METRIC_INFO = {
+    loss:      { label: 'Loss',      desc: 'Error the model minimizes during training.',       impact: 'Lower = better fit. Plateau = converged.' },
+    accuracy:  { label: 'Accuracy',  desc: 'Fraction of correctly classified samples.',        impact: 'Best with balanced classes. 90%+ is typically production-ready.' },
+    recall:    { label: 'Recall',    desc: 'True positives / (True pos + False neg).',          impact: 'Critical when missing a positive is costly (e.g. disease detection).' },
+    precision: { label: 'Precision', desc: 'True positives / (True pos + False pos).',          impact: 'Critical when false alarms are costly (e.g. spam filters, fraud).' },
+    f1:        { label: 'F1',        desc: 'Harmonic mean of Precision and Recall.',            impact: 'Best single metric for imbalanced datasets.' },
+    mae:       { label: 'MAE',       desc: 'Mean Absolute Error — avg magnitude of errors.',   impact: 'Interpretable in same units as target. Robust to outliers.' },
+    rmse:      { label: 'RMSE',      desc: 'Root Mean Squared Error — penalizes large errors.', impact: 'Sensitive to outliers. Use when large errors are especially bad.' },
+    mape:      { label: 'MAPE',      desc: 'Mean Absolute Percentage Error.',                   impact: 'Scale-independent. Useful for comparing across different datasets.' },
+    nmae:      { label: 'NMAE',      desc: 'Normalized MAE relative to mean target value.',    impact: 'Allows comparison when target scale varies across runs.' },
+  };
+
   setupMetrics(sim) {
     this.metricKeys = sim.metricKeys || ['loss'];
     if (!this.metricsContainer) return;
     this.metricsContainer.innerHTML = '';
 
     this.metricKeys.forEach(key => {
+      const info = UIController.METRIC_INFO[key] || { label: key.toUpperCase(), desc: '', impact: '' };
+
       const card = document.createElement('div');
       card.className = 'metric-card';
 
+      // Header: name + last value
       const header = document.createElement('div');
       header.className = 'metric-card-header';
+
+      const nameWrap = document.createElement('div');
+      nameWrap.className = 'metric-name-wrap';
+
       const name = document.createElement('span');
       name.className = 'metric-name';
-      name.textContent = key.toUpperCase();
+      name.textContent = info.label.toUpperCase();
+      nameWrap.appendChild(name);
+
       const lastVal = document.createElement('span');
       lastVal.className = 'metric-last-value';
       lastVal.setAttribute('data-metric-val', key);
       lastVal.textContent = '—';
-      header.appendChild(name);
+
+      header.appendChild(nameWrap);
       header.appendChild(lastVal);
+      card.appendChild(header);
+
+      // Description + business impact
+      if (info.desc) {
+        const descWrap = document.createElement('div');
+        descWrap.className = 'metric-desc';
+        descWrap.innerHTML = `<span class="metric-desc-text">${info.desc}</span>`
+          + (info.impact ? ` <span class="metric-impact">${info.impact}</span>` : '');
+        card.appendChild(descWrap);
+      }
 
       const canvas = document.createElement('canvas');
       canvas.setAttribute('data-metric', key);
       canvas.width  = 500;
       canvas.height = 120;
-
-      card.appendChild(header);
       card.appendChild(canvas);
+
       this.metricsContainer.appendChild(card);
     });
   }
