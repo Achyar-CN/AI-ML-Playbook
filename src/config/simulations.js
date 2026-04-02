@@ -1,126 +1,161 @@
-import { PerceptronSimulation }      from '../simulations/perceptron/index.js';
-import { NNSimulation }              from '../simulations/nn/index.js';
-import { LinearRegressionSimulation } from '../simulations/linearRegression/index.js';
-import { DecisionTreeSimulation }    from '../simulations/decisionTree/index.js';
-import { AdaBoostSimulation }        from '../simulations/adaboost/index.js';
+import { PerceptronSimulation }       from '../simulations/perceptron/index.js';
+import { NNSimulation }               from '../simulations/nn/index.js';
+import { LinearRegressionSimulation }  from '../simulations/linearRegression/index.js';
+import { DecisionTreeSimulation }     from '../simulations/decisionTree/index.js';
+import { AdaBoostSimulation }         from '../simulations/adaboost/index.js';
+
+const CLASS_DATASETS = [
+  { id: 'linear',       label: 'Linear' },
+  { id: 'diagonal',     label: 'Diagonal' },
+  { id: 'xor',          label: 'XOR' },
+  { id: 'moons',        label: 'Moons' },
+  { id: 'circle',       label: 'Circle' },
+  { id: 'spiral',       label: 'Spiral' },
+  { id: 'checkerboard', label: 'Grid' },
+];
+
+const REG_DATASETS = [
+  { id: 'linear',    label: 'Linear' },
+  { id: 'quadratic', label: 'Quadratic' },
+  { id: 'sine',      label: 'Sine' },
+  { id: 'cubic',     label: 'Cubic' },
+  { id: 'noisy',     label: 'Noisy' },
+];
+
+const classDataParams = (datasets, defaultDataset = 'linear') => [
+  { name: 'datasetType', label: 'Dataset Shape', type: 'dataset', options: datasets, default: defaultDataset },
+  { name: 'nPoints',     label: 'Points',        type: 'number', min: 20, max: 400, step: 10,
+    description: 'Number of training samples.' },
+  { name: 'noiseLevel',  label: 'Noise',         type: 'number', min: 0, max: 0.5, step: 0.02,
+    description: 'Random noise added to class boundaries.' },
+  { name: 'seed',        label: 'Random Seed',   type: 'number', min: 0, max: 9999, step: 1,
+    description: 'Same seed = same data. Change to try different splits.' },
+];
+
+const regDataParams = [
+  { name: 'datasetType', label: 'Dataset Shape', type: 'dataset', options: REG_DATASETS, default: 'linear' },
+  { name: 'nPoints',     label: 'Points',        type: 'number', min: 20, max: 400, step: 10,
+    description: 'Number of training samples.' },
+  { name: 'noiseLevel',  label: 'Noise',         type: 'number', min: 0.02, max: 0.8, step: 0.02,
+    description: 'Noise amplitude around the true function.' },
+  { name: 'seed',        label: 'Random Seed',   type: 'number', min: 0, max: 9999, step: 1,
+    description: 'Same seed = same data.' },
+];
 
 export const simulations = [
+  // ── Classification ───────────────────────────────────────────
   {
     id: 'perceptron',
     title: 'Perceptron',
-    class: PerceptronSimulation,
     taskType: 'classification',
+    class: PerceptronSimulation,
     metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
     defaultParams: {
-      learningRate: 0.1,
-      epochs: 100,
-      nPoints: 120,
-      seed: 42,
+      datasetType: 'linear', nPoints: 120, noiseLevel: 0.08, seed: 42,
+      learningRate: 0.1, epochs: 100,
     },
+    dataParamControls: classDataParams(
+      [{ id:'linear',label:'Linear'},{id:'diagonal',label:'Diagonal'},{id:'moons',label:'Moons'},{id:'xor',label:'XOR'}],
+      'linear'
+    ),
     paramControls: [
       { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 1, step: 0.001,
-        description: 'Controls weight update magnitude. Higher = faster but may overshoot.' },
-      { name: 'epochs',       label: 'Epochs',        type: 'number', min: 1,     max: 500, step: 1,
-        description: 'Number of complete passes through the training data.' },
-      { name: 'nPoints',      label: 'Points',        type: 'number', min: 20,    max: 1000, step: 10,
-        description: 'Number of training data points to generate.' },
-      { name: 'seed',         label: 'Random Seed',   type: 'number', min: 0,     max: 9999, step: 1,
-        description: 'Seed for reproducible data generation.' },
+        description: 'Step size for weight updates. Too high = unstable, too low = slow.' },
+      { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 500, step: 1,
+        description: 'Full passes over all training data.' },
     ],
   },
+
   {
     id: 'nn',
-    title: 'Neural Network (2-layer)',
-    class: NNSimulation,
+    title: 'Neural Network',
     taskType: 'classification',
+    class: NNSimulation,
     metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
     defaultParams: {
-      learningRate: 0.1,
-      epochs: 200,
-      nPoints: 150,
-      hiddenUnits: 4,
-      seed: 42,
+      datasetType: 'circle', nPoints: 150, noiseLevel: 0.08, seed: 42,
+      learningRate: 0.05, epochs: 300, hiddenUnits: 6, activation: 'tanh', l2: 0,
     },
+    dataParamControls: classDataParams(CLASS_DATASETS, 'circle'),
     paramControls: [
-      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 1,    step: 0.001,
-        description: 'Controls how much weights are updated each step.' },
-      { name: 'epochs',       label: 'Epochs',        type: 'number', min: 1,     max: 1000,  step: 1,
-        description: 'Number of complete passes through the training data.' },
-      { name: 'hiddenUnits',  label: 'Hidden Units',  type: 'number', min: 1,     max: 20,    step: 1,
-        description: 'Neurons in the hidden layer. More units = more complex boundaries.' },
-      { name: 'nPoints',      label: 'Points',        type: 'number', min: 20,    max: 1000,  step: 10,
-        description: 'Number of training data points.' },
-      { name: 'seed',         label: 'Random Seed',   type: 'number', min: 0,     max: 9999,  step: 1,
-        description: 'Seed for reproducible results.' },
+      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 0.5, step: 0.001,
+        description: 'Gradient descent step size. Typical range: 0.01–0.1.' },
+      { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 1000, step: 10,
+        description: 'Training iterations over all data.' },
+      { name: 'hiddenUnits', label: 'Hidden Units', type: 'number', min: 1, max: 24, step: 1,
+        description: 'Neurons in the hidden layer. More = more complex boundaries.' },
+      { name: 'activation', label: 'Activation', type: 'select',
+        options: [{value:'tanh',label:'Tanh'},{value:'relu',label:'ReLU'},{value:'sigmoid',label:'Sigmoid'}],
+        description: 'Nonlinearity for hidden neurons. Tanh: symmetric, ReLU: fast, Sigmoid: saturates.' },
+      { name: 'l2', label: 'L2 Regularization', type: 'number', min: 0, max: 0.1, step: 0.002,
+        description: 'Penalizes large weights to reduce overfitting.' },
     ],
   },
-  {
-    id: 'linearRegression',
-    title: 'Linear Regression',
-    class: LinearRegressionSimulation,
-    taskType: 'regression',
-    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae'],
-    defaultParams: {
-      learningRate: 0.1,
-      epochs: 100,
-      nPoints: 100,
-      noise: 0.3,
-      seed: 42,
-    },
-    paramControls: [
-      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 1,    step: 0.001,
-        description: 'Gradient descent step size. Too high causes divergence.' },
-      { name: 'epochs',       label: 'Epochs',        type: 'number', min: 1,     max: 500,  step: 1,
-        description: 'Number of gradient descent iterations.' },
-      { name: 'noise',        label: 'Noise Level',   type: 'number', min: 0.05,  max: 0.9,  step: 0.05,
-        description: 'Noise added to the linear pattern. Higher = messier data.' },
-      { name: 'nPoints',      label: 'Points',        type: 'number', min: 20,    max: 1000, step: 10,
-        description: 'Number of training data points.' },
-      { name: 'seed',         label: 'Random Seed',   type: 'number', min: 0,     max: 9999, step: 1,
-        description: 'Seed for reproducible data generation.' },
-    ],
-  },
+
   {
     id: 'decisionTree',
-    title: 'Decision Tree (recursive)',
-    class: DecisionTreeSimulation,
+    title: 'Decision Tree',
     taskType: 'classification',
+    class: DecisionTreeSimulation,
     metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
     defaultParams: {
-      maxDepth: 6,
-      minLeafSize: 5,
-      nPoints: 120,
-      seed: 42,
+      datasetType: 'xor', nPoints: 120, noiseLevel: 0.08, seed: 42,
+      maxDepth: 6, minLeafSize: 5, useGini: false,
     },
+    dataParamControls: classDataParams(CLASS_DATASETS, 'xor'),
     paramControls: [
-      { name: 'maxDepth',     label: 'Max Depth',     type: 'number', min: 1, max: 10, step: 1,
-        description: 'Maximum depth of the recursive tree. Each step adds one more level.' },
-      { name: 'minLeafSize',  label: 'Min Leaf Size', type: 'number', min: 2, max: 40, step: 1,
-        description: 'Minimum samples required to split a node. Higher = simpler tree.' },
-      { name: 'nPoints',      label: 'Points',        type: 'number', min: 20, max: 1000, step: 10,
-        description: 'Number of training data points.' },
-      { name: 'seed',         label: 'Random Seed',   type: 'number', min: 0,  max: 9999, step: 1,
-        description: 'Seed for reproducible data generation.' },
+      { name: 'maxDepth', label: 'Max Depth', type: 'number', min: 1, max: 10, step: 1,
+        description: 'Max recursive levels. Each Run epoch adds 1 more level.' },
+      { name: 'minLeafSize', label: 'Min Leaf Size', type: 'number', min: 2, max: 40, step: 1,
+        description: 'Minimum samples to split a node. Higher = simpler, more pruned tree.' },
+      { name: 'useGini', label: 'Use Gini (vs Entropy)', type: 'boolean',
+        description: 'Gini impurity vs Information Gain (entropy) as the split criterion.' },
     ],
   },
+
   {
     id: 'adaboost',
-    title: 'AdaBoost (Ensemble)',
-    class: AdaBoostSimulation,
+    title: 'AdaBoost',
     taskType: 'classification',
+    class: AdaBoostSimulation,
     metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
     defaultParams: {
-      epochs: 20,
-      nPoints: 120,
-      seed: 42,
+      datasetType: 'linear', nPoints: 120, noiseLevel: 0.08, seed: 42,
+      epochs: 20, learningRate: 1.0,
     },
+    dataParamControls: classDataParams(
+      [{id:'linear',label:'Linear'},{id:'xor',label:'XOR'},{id:'moons',label:'Moons'},{id:'circle',label:'Circle'},{id:'diagonal',label:'Diagonal'}],
+      'linear'
+    ),
     paramControls: [
-      { name: 'epochs',  label: 'Boosting Rounds', type: 'number', min: 1, max: 60, step: 1,
-        description: 'Number of weak learners (decision stumps) to add to the ensemble.' },
-      { name: 'nPoints', label: 'Points',          type: 'number', min: 20, max: 1000, step: 10,
-        description: 'Number of training data points. Point size shows sample weight.' },
-      { name: 'seed',    label: 'Random Seed',     type: 'number', min: 0,  max: 9999, step: 1,
-        description: 'Seed for reproducible data generation.' },
+      { name: 'epochs', label: 'Boosting Rounds', type: 'number', min: 1, max: 60, step: 1,
+        description: 'Number of weak learners (decision stumps) in the ensemble.' },
+      { name: 'learningRate', label: 'Shrinkage', type: 'number', min: 0.05, max: 1, step: 0.05,
+        description: 'Scales each stump\'s weight. Lower = slower but more stable ensemble.' },
+    ],
+  },
+
+  // ── Regression ───────────────────────────────────────────────
+  {
+    id: 'linearRegression',
+    title: 'Linear / Poly Regression',
+    taskType: 'regression',
+    class: LinearRegressionSimulation,
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae'],
+    defaultParams: {
+      datasetType: 'linear', nPoints: 100, noiseLevel: 0.25, seed: 42,
+      learningRate: 0.05, epochs: 200, degree: 1, l2: 0,
+    },
+    dataParamControls: regDataParams,
+    paramControls: [
+      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 0.5, step: 0.001,
+        description: 'Gradient descent step size. Too high = divergence.' },
+      { name: 'epochs', label: 'Epochs', type: 'number', min: 1, max: 1000, step: 10,
+        description: 'Gradient descent iterations.' },
+      { name: 'degree', label: 'Polynomial Degree', type: 'number', min: 1, max: 6, step: 1,
+        description: 'Degree 1 = line, 2 = parabola, 3–6 = higher-order curves.' },
+      { name: 'l2', label: 'L2 (Ridge) Regularization', type: 'number', min: 0, max: 0.2, step: 0.005,
+        description: 'Penalizes large weights. Helps prevent overfitting on high-degree poly.' },
     ],
   },
 ];

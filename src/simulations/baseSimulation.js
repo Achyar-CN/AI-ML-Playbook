@@ -100,6 +100,79 @@ export class BaseSimulation {
     return rand() * (max - min) + min;
   }
 
+  // ── Dataset Generators ─────────────────────────────────────
+  // Returns [{x, y, label}] — x,y in roughly [-1,1], label in {0,1}
+  generateClassDataset(type, nPoints, seed, noiseLevel = 0.08) {
+    const pts = [];
+    const rng  = this.seededRandom(seed);
+    const rand = () => rng() * 2 - 1; // [-1,1]
+    const rn   = () => (rng() - 0.5) * 2 * noiseLevel;
+
+    if (type === 'moons') {
+      const n = Math.floor(nPoints / 2);
+      // Upper moon: arc 0..π, centered ~(-0.5,0.25)
+      for (let i = 0; i < n; i++) {
+        const t = Math.PI * i / Math.max(n - 1, 1);
+        pts.push({ x: Math.cos(t) * 0.75 + rn(), y:  Math.sin(t) * 0.5 - 0.1 + rn(), label: 1 });
+      }
+      // Lower moon: arc 0..π, mirrored & offset
+      for (let i = 0; i < nPoints - n; i++) {
+        const t = Math.PI * i / Math.max(nPoints - n - 1, 1);
+        pts.push({ x: (1 - Math.cos(t)) * 0.75 - 0.375 + rn(), y: -Math.sin(t) * 0.5 + 0.1 + rn(), label: 0 });
+      }
+      return pts;
+    }
+
+    if (type === 'spiral') {
+      const n = Math.floor(nPoints / 2);
+      for (let c = 0; c < 2; c++) {
+        const count = c === 0 ? n : nPoints - n;
+        for (let i = 0; i < count; i++) {
+          const r = (i / count) * 0.88;
+          const t = (i / count) * 4.5 * Math.PI + c * Math.PI;
+          pts.push({ x: r * Math.cos(t) + rn(), y: r * Math.sin(t) + rn(), label: c });
+        }
+      }
+      return pts;
+    }
+
+    // Point-based datasets
+    for (let i = 0; i < nPoints; i++) {
+      const x = rand(), y = rand();
+      let label;
+      switch (type) {
+        case 'xor':         label = (x * y > 0) ? 1 : 0; break;
+        case 'circle':      label = (x * x + y * y < 0.45) ? 1 : 0; break;
+        case 'checkerboard': label = ((Math.floor((x + 1) * 2) + Math.floor((y + 1) * 2)) % 2 === 0) ? 1 : 0; break;
+        case 'diagonal':    label = (x + 0.6 * y + (rng() - 0.5) * 0.28 > 0) ? 1 : 0; break;
+        default:            label = (y > x) ? 1 : 0; // 'linear'
+      }
+      pts.push({ x, y, label });
+    }
+    return pts;
+  }
+
+  // Returns [{x, y}] — x in [-1,1], y approx in [-1,1]
+  generateRegressionDataset(type, nPoints, seed, noiseLevel = 0.3) {
+    const pts = [];
+    const rng  = this.seededRandom(seed);
+
+    for (let i = 0; i < nPoints; i++) {
+      const x = rng() * 2 - 1;  // [-1,1]
+      const noise = (rng() - 0.5) * 2 * noiseLevel;
+      let y;
+      switch (type) {
+        case 'quadratic': y = 1.2 * x * x - 0.3 + noise; break;
+        case 'sine':      y = Math.sin(x * Math.PI * 1.2) * 0.7 + noise; break;
+        case 'cubic':     y = 1.0 * x * x * x + 0.2 * x + noise; break;
+        case 'noisy':     y = 0.5 * x + 0.1 + (rng() - 0.5) * 2 * 0.7; break;
+        default:          y = 0.65 * x + 0.1 + noise; // 'linear'
+      }
+      pts.push({ x, y: Math.max(-1.2, Math.min(1.2, y)) });
+    }
+    return pts;
+  }
+
   // Draw a 2x2 confusion matrix at (x0, y0) with given cellSize.
   // labels and preds are arrays of 0/1.
   drawConfusionMatrix(ctx, labels, preds, x0, y0, cellSize = 56) {

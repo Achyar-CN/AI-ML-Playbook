@@ -1,8 +1,9 @@
 export class UIController {
-  constructor({ controlsPanel, simulationManager, stateManager }) {
-    this.controlsPanel    = controlsPanel;
+  constructor({ controlsPanel, simulationManager, stateManager, simulations }) {
+    this.controlsPanel     = controlsPanel;
     this.simulationManager = simulationManager;
-    this.stateManager     = stateManager;
+    this.stateManager      = stateManager;
+    this.allSimulations    = simulations; // full metadata array
 
     this.statusBadge      = document.getElementById('status-badge');
     this.epochDisplay     = document.getElementById('epoch-display');
@@ -13,7 +14,7 @@ export class UIController {
     this._bindSpeedSlider();
   }
 
-  // ── Topbar ─────────────────────────────────────────────────
+  // ── Topbar ──────────────────────────────────────────────────
   _bindTopbarButtons() {
     document.getElementById('start-btn')?.addEventListener('click', () => {
       this.setStatus('running');
@@ -54,46 +55,91 @@ export class UIController {
 
   _updateEpoch(history) {
     if (!this.epochDisplay) return;
-    if (!history || history.length === 0) {
-      this.epochDisplay.textContent = '—';
-      return;
-    }
+    if (!history || history.length === 0) { this.epochDisplay.textContent = '—'; return; }
     const last     = history[history.length - 1];
-    const meta     = this.simulationManager.currentMeta;
-    const dp       = meta && meta.defaultParams;
+    const dp       = this.simulationManager.currentMeta?.defaultParams;
     const maxEpoch = dp ? (dp.epochs ?? dp.maxDepth ?? '?') : '?';
     this.epochDisplay.textContent = `${last.epoch} / ${maxEpoch}`;
   }
 
-  // ── Simulation menu ────────────────────────────────────────
+  // ── Main menu: task tabs + algo selector ─────────────────────
   renderMenu(simulations) {
     const box = document.getElementById('algo-selector-box');
     if (!box) return;
+    box.innerHTML = '';
 
+    // Group by taskType
+    const groups = {};
+    simulations.forEach(sim => {
+      if (!groups[sim.taskType]) groups[sim.taskType] = [];
+      groups[sim.taskType].push(sim);
+    });
+    const taskTypes = Object.keys(groups);
+
+    // Task tabs
+    const tabBar = document.createElement('div');
+    tabBar.className = 'task-tabs';
+    taskTypes.forEach((type, i) => {
+      const btn = document.createElement('button');
+      btn.className = `task-tab${i === 0 ? ' active' : ''}`;
+      btn.dataset.task = type;
+      btn.textContent = type.charAt(0).toUpperCase() + type.slice(1);
+      tabBar.appendChild(btn);
+    });
+    box.appendChild(tabBar);
+
+    // Algo select
     const select = document.createElement('select');
     select.className = 'algo-select';
     select.setAttribute('data-sim-select', '');
-    simulations.forEach((sim) => {
-      const opt = document.createElement('option');
-      opt.value = sim.id;
-      opt.textContent = sim.title;
-      select.appendChild(opt);
-    });
+    const populateAlgos = (taskType) => {
+      select.innerHTML = '';
+      groups[taskType].forEach(sim => {
+        const opt = document.createElement('option');
+        opt.value = sim.id;
+        opt.textContent = sim.title;
+        select.appendChild(opt);
+      });
+    };
+    populateAlgos(taskTypes[0]);
     box.appendChild(select);
 
-    select.addEventListener('change', () => {
-      const id = select.value;
-      this.stateManager.setState({ sim: id });
-      this.simulationManager.stop();
-      this.simulationManager.selectSimulation(id);
-      this.setSelectedSim(id);
-      this.setStatus('ready');
-      this.renderMetrics([]);
-      this._updateEpoch([]);
+    // Tab switching
+    let activeTask = taskTypes[0];
+    tabBar.addEventListener('click', (e) => {
+      const btn = e.target.closest('.task-tab');
+      if (!btn) return;
+      tabBar.querySelectorAll('.task-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTask = btn.dataset.task;
+      populateAlgos(activeTask);
+      const firstId = groups[activeTask][0].id;
+      this._switchSim(firstId);
     });
 
-    const modelId = this.stateManager.get('sim', simulations[0]?.id);
-    this.setSelectedSim(modelId);
+    select.addEventListener('change', () => this._switchSim(select.value));
+
+    const initId = this.stateManager.get('sim', simulations[0]?.id);
+    // Activate correct tab
+    const initSim = simulations.find(s => s.id === initId);
+    if (initSim) {
+      activeTask = initSim.taskType;
+      populateAlgos(activeTask);
+      tabBar.querySelectorAll('.task-tab').forEach(b => {
+        b.classList.toggle('active', b.dataset.task === activeTask);
+      });
+    }
+    this.setSelectedSim(initId);
+  }
+
+  _switchSim(id) {
+    this.simulationManager.stop();
+    this.simulationManager.selectSimulation(id);
+    this.setSelectedSim(id);
+    this.setStatus('ready');
+    this.renderMetrics([]);
+    this._updateEpoch([]);
+    this.stateManager.setState({ sim: id });
   }
 
   setSelectedSim(id) {
@@ -101,111 +147,189 @@ export class UIController {
     if (select) select.value = id;
     const sim = this.simulationManager.simulations?.get(id);
     if (sim) {
-      this.renderParams(sim);
+      this.renderDataParams(sim);
+      this.renderHyperParams(sim);
       this.setupMetrics(sim);
     }
   }
 
-  // ── Parameters (sliders + toggles) ────────────────────────
-  renderParams(sim) {
+  // ── Data section (dataset chips + data sliders) ──────────────
+  renderDataParams(sim) {
+    const box = document.getElementById('data-param-box');
+    if (!box) return;
+    box.innerHTML = '';
+
+    const defaults = sim.defaultParams || {};
+    const controls = sim.dataParamControls || [];
+
+    controls.forEach(field => {
+      const value = this.stateManager.get(field.name, defaults[field.name]);
+
+      if (field.type === 'dataset') {
+        // Chip grid for dataset selection
+        const chips = document.createElement('div');
+        chips.className = 'dataset-chips';
+        field.options.forEach(opt => {
+          const chip = document.createElement('button');
+          chip.className = `dataset-chip${opt.id === (value || field.options[0].id) ? ' active' : ''}`;
+          chip.dataset.value = opt.id;
+          chip.textContent = opt.label;
+          chip.addEventListener('click', () => {
+            chips.querySelectorAll('.dataset-chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            this._applyParam(field.name, opt.id);
+          });
+          chips.appendChild(chip);
+        });
+        box.appendChild(chips);
+        return;
+      }
+
+      box.appendChild(this._buildSliderField(field, value));
+    });
+  }
+
+  // ── Hyperparameter section ────────────────────────────────────
+  renderHyperParams(sim) {
     const box = document.getElementById('param-box');
     if (!box) return;
     box.innerHTML = '';
 
     const defaults = sim.defaultParams || {};
-    const meta     = sim.paramControls || [];
+    const controls = sim.paramControls  || [];
 
-    meta.forEach((field) => {
-      const value   = this.stateManager.get(field.name, defaults[field.name]);
-      const wrapper = document.createElement('div');
-      wrapper.className = 'param-field';
+    controls.forEach(field => {
+      const value = this.stateManager.get(field.name, defaults[field.name]);
 
       if (field.type === 'boolean') {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'param-field';
         const row = document.createElement('div');
         row.className = 'toggle-row';
         const lbl = document.createElement('label');
         lbl.textContent = field.label;
         lbl.setAttribute('for', `param-${field.name}`);
         const inp = document.createElement('input');
-        inp.id      = `param-${field.name}`;
-        inp.type    = 'checkbox';
+        inp.id = `param-${field.name}`;
+        inp.type = 'checkbox';
         inp.className = 'toggle';
         inp.checked = Boolean(value);
         inp.setAttribute('data-param-name', field.name);
+        inp.addEventListener('change', () => this._applyParam(field.name, inp.checked));
         row.appendChild(lbl);
         row.appendChild(inp);
         wrapper.appendChild(row);
-      } else {
-        const header = document.createElement('div');
-        header.className = 'param-header';
+        if (field.description) {
+          const d = document.createElement('p');
+          d.className = 'param-desc';
+          d.textContent = field.description;
+          wrapper.appendChild(d);
+        }
+        box.appendChild(wrapper);
+        return;
+      }
+
+      if (field.type === 'select') {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'param-field';
         const lbl = document.createElement('label');
         lbl.textContent = field.label;
         lbl.setAttribute('for', `param-${field.name}`);
-        const valDisplay = document.createElement('span');
-        valDisplay.className = 'param-value-display';
-        valDisplay.textContent = value;
-        header.appendChild(lbl);
-        header.appendChild(valDisplay);
-        wrapper.appendChild(header);
-
-        const inp = document.createElement('input');
-        inp.id = `param-${field.name}`;
-        inp.type = 'range';
-        inp.className = 'param-slider';
-        inp.min   = field.min  != null ? field.min  : 0;
-        inp.max   = field.max  != null ? field.max  : 100;
-        inp.step  = field.step != null ? field.step : 1;
-        inp.value = value;
-        inp.setAttribute('data-param-name', field.name);
-        inp.addEventListener('input', () => { valDisplay.textContent = inp.value; });
-        wrapper.appendChild(inp);
+        wrapper.appendChild(lbl);
+        const sel = document.createElement('select');
+        sel.id = `param-${field.name}`;
+        sel.className = 'param-select';
+        sel.setAttribute('data-param-name', field.name);
+        field.options.forEach(opt => {
+          const o = document.createElement('option');
+          o.value = opt.value;
+          o.textContent = opt.label;
+          if (opt.value === value) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.addEventListener('change', () => this._applyParam(field.name, sel.value));
+        wrapper.appendChild(sel);
+        if (field.description) {
+          const d = document.createElement('p');
+          d.className = 'param-desc';
+          d.textContent = field.description;
+          wrapper.appendChild(d);
+        }
+        box.appendChild(wrapper);
+        return;
       }
 
-      if (field.description) {
-        const desc = document.createElement('p');
-        desc.className = 'param-desc';
-        desc.textContent = field.description;
-        wrapper.appendChild(desc);
-      }
-
-      box.appendChild(wrapper);
-    });
-
-    // Delegate change events (fires after slider released or checkbox toggled)
-    box.addEventListener('change', (e) => {
-      const el = e.target.closest('[data-param-name]');
-      if (!el || !this.simulationManager.current) return;
-      const pName = el.getAttribute('data-param-name');
-      const val   = el.type === 'checkbox' ? el.checked : Number(el.value);
-      this.simulationManager.updateCurrentParams({ [pName]: val });
-      this.stateManager.setState({ [pName]: val });
-      this.renderMetrics([]);
-      this._updateEpoch([]);
+      box.appendChild(this._buildSliderField(field, value));
     });
   }
 
-  // ── Metrics panel ──────────────────────────────────────────
+  _buildSliderField(field, value) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'param-field';
+
+    const header = document.createElement('div');
+    header.className = 'param-header';
+    const lbl = document.createElement('label');
+    lbl.textContent = field.label;
+    lbl.setAttribute('for', `param-${field.name}`);
+    const valDisp = document.createElement('span');
+    valDisp.className = 'param-value-display';
+    valDisp.textContent = value;
+    header.appendChild(lbl);
+    header.appendChild(valDisp);
+    wrapper.appendChild(header);
+
+    const inp = document.createElement('input');
+    inp.id        = `param-${field.name}`;
+    inp.type      = 'range';
+    inp.className = 'param-slider';
+    inp.min   = field.min  != null ? field.min  : 0;
+    inp.max   = field.max  != null ? field.max  : 100;
+    inp.step  = field.step != null ? field.step : 1;
+    inp.value = value;
+    inp.setAttribute('data-param-name', field.name);
+
+    inp.addEventListener('input', () => { valDisp.textContent = inp.value; });
+    inp.addEventListener('change', () => this._applyParam(field.name, Number(inp.value)));
+
+    wrapper.appendChild(inp);
+
+    if (field.description) {
+      const d = document.createElement('p');
+      d.className = 'param-desc';
+      d.textContent = field.description;
+      wrapper.appendChild(d);
+    }
+    return wrapper;
+  }
+
+  _applyParam(name, value) {
+    if (!this.simulationManager.current) return;
+    this.simulationManager.updateCurrentParams({ [name]: value });
+    this.stateManager.setState({ [name]: value });
+    this.renderMetrics([]);
+    this._updateEpoch([]);
+  }
+
+  // ── Metrics ──────────────────────────────────────────────────
   setupMetrics(sim) {
     this.metricKeys = sim.metricKeys || ['loss'];
     if (!this.metricsContainer) return;
     this.metricsContainer.innerHTML = '';
 
-    this.metricKeys.forEach((key) => {
+    this.metricKeys.forEach(key => {
       const card = document.createElement('div');
       card.className = 'metric-card';
 
       const header = document.createElement('div');
       header.className = 'metric-card-header';
-
       const name = document.createElement('span');
       name.className = 'metric-name';
       name.textContent = key.toUpperCase();
-
       const lastVal = document.createElement('span');
       lastVal.className = 'metric-last-value';
       lastVal.setAttribute('data-metric-val', key);
       lastVal.textContent = '—';
-
       header.appendChild(name);
       header.appendChild(lastVal);
 
@@ -224,7 +348,7 @@ export class UIController {
     this._updateEpoch(history);
     if (!this.metricsContainer) return;
 
-    this.metricKeys.forEach((key) => {
+    this.metricKeys.forEach(key => {
       const canvas  = this.metricsContainer.querySelector(`canvas[data-metric="${key}"]`);
       const valSpan = this.metricsContainer.querySelector(`[data-metric-val="${key}"]`);
       if (!canvas) return;
@@ -246,14 +370,13 @@ export class UIController {
         return;
       }
 
-      const values = history.map((item) => (item[key] !== undefined ? item[key] : 0));
+      const values = history.map(item => item[key] !== undefined ? item[key] : 0);
       const latest = values[values.length - 1];
       const isAcc  = ['accuracy', 'f1', 'recall', 'precision'].includes(key);
       const isMape = key === 'mape';
 
       if (valSpan) {
-        const disp = isAcc
-          ? `${(latest * 100).toFixed(1)}%`
+        const disp = isAcc ? `${(latest * 100).toFixed(1)}%`
           : isMape ? `${latest.toFixed(1)}%`
           : latest.toFixed(4);
         valSpan.textContent = disp;
@@ -266,10 +389,8 @@ export class UIController {
       const chartW = W - pad.l - pad.r;
       const chartH = H - pad.t - pad.b;
 
-      // Grid
       for (let i = 0; i <= 3; i++) {
-        const yFrac = i / 3;
-        const cy    = pad.t + yFrac * chartH;
+        const yFrac = i / 3, cy = pad.t + yFrac * chartH;
         ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(pad.l, cy); ctx.lineTo(W - pad.r, cy); ctx.stroke();
         ctx.fillStyle = '#94a3b8'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
@@ -282,7 +403,6 @@ export class UIController {
       const lineColor = key === 'loss' ? '#dc2626' : '#1d4ed8';
       const areaColor = key === 'loss' ? 'rgba(220,38,38,.08)' : 'rgba(29,78,216,.08)';
 
-      // Area fill
       ctx.beginPath();
       ctx.moveTo(pad.l, pad.t + chartH);
       for (let i = 0; i < n; i++) {
@@ -292,20 +412,16 @@ export class UIController {
       }
       ctx.lineTo(pad.l + chartW, pad.t + chartH);
       ctx.closePath();
-      ctx.fillStyle = areaColor;
-      ctx.fill();
+      ctx.fillStyle = areaColor; ctx.fill();
 
-      // Line
       ctx.beginPath();
       for (let i = 0; i < n; i++) {
         const x = pad.l + (i / Math.max(n - 1, 1)) * chartW;
         const y = pad.t + ((maxY - values[i]) / yRange) * chartH;
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
       }
-      ctx.strokeStyle = lineColor; ctx.lineWidth = 2; ctx.lineJoin = 'round';
-      ctx.stroke();
+      ctx.strokeStyle = lineColor; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
 
-      // Latest dot
       const lx = pad.l + chartW;
       const ly = pad.t + ((maxY - latest) / yRange) * chartH;
       ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI * 2);
@@ -313,4 +429,3 @@ export class UIController {
     });
   }
 }
-

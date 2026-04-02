@@ -9,7 +9,7 @@ export class App {
     this.controlsPanel = controlsPanel;
     this.state = new StateManager();
     this.simulationManager = new SimulationManager({ root });
-    this.ui = new UIController({ controlsPanel, simulationManager: this.simulationManager, stateManager: this.state });
+    this.ui = new UIController({ controlsPanel, simulationManager: this.simulationManager, stateManager: this.state, simulations });
   }
 
   init() {

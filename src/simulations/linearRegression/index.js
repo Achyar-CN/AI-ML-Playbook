@@ -3,187 +3,155 @@ import { BaseSimulation } from '../baseSimulation.js';
 export class LinearRegressionSimulation extends BaseSimulation {
   setup() {
     this.history = [];
-    this.points = [];
-    const { nPoints, seed, noise } = this.params;
-    this.m = 0;
-    this.b = 0;
-    this.epoch = 0;
+    this.epoch   = 0;
+    const { nPoints, seed, noiseLevel, datasetType, degree } = this.params;
+    const deg = Math.max(1, Math.round(degree || 1));
 
-    // Generate data following a noisy linear pattern: y = 0.65*x + 0.1 + noise
-    const trueSlope = 0.65;
-    const trueIntercept = 0.1;
-    const noiseLevel = noise !== undefined ? noise : 0.3;
+    this.points = this.generateRegressionDataset(datasetType || 'linear', nPoints, seed, noiseLevel ?? 0.25);
 
-    for (let i = 0; i < nPoints; i++) {
-      const x = this.randomBetween(-1, 1, seed + 10 + i * 2);
-      const n = this.randomBetween(-noiseLevel, noiseLevel, seed + 11 + i * 2);
-      const y = Math.max(-1, Math.min(1, trueSlope * x + trueIntercept + n));
-      this.points.push({ x, y });
-    }
+    // Weights: one per polynomial feature [x^0, x^1, ..., x^deg]
+    this.weights = Array.from({ length: deg+1 }, (_, i) =>
+      this.randomBetween(-0.1, 0.1, seed + i + 10)
+    );
+  }
+
+  _polyFeatures(x) {
+    // [1, x, x^2, ..., x^deg]
+    return this.weights.map((_, i) => Math.pow(x, i));
   }
 
   predict(x) {
-    return this.m * x + this.b;
+    const feats = this._polyFeatures(x);
+    return this.weights.reduce((s, w, i) => s + w * feats[i], 0);
   }
 
   step() {
     if (this.epoch >= this.params.epochs) return;
-
     const lr = this.params.learningRate;
-    let dm = 0;
-    let db = 0;
+    const l2 = this.params.l2 || 0;
+    const n  = this.points.length;
+    const grads = new Array(this.weights.length).fill(0);
 
-    this.points.forEach((pt) => {
-      const pred = this.predict(pt.x);
-      const error = pred - pt.y;
-      dm += error * pt.x;
-      db += error;
+    this.points.forEach(pt => {
+      const feats = this._polyFeatures(pt.x);
+      const err   = this.predict(pt.x) - pt.y;
+      feats.forEach((f, i) => { grads[i] += err * f; });
     });
 
-    const n = this.points.length;
-    this.m -= lr * (dm / n);
-    this.b -= lr * (db / n);
+    this.weights.forEach((w, i) => {
+      this.weights[i] -= lr * (grads[i]/n + l2 * w);
+    });
 
     this.epoch++;
-    const metrics = this.computeMetrics();
-    this.history.push({ epoch: this.epoch, ...metrics });
+    this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
+  }
+
+  _drawCurve(W, H) {
+    const steps = 200;
+    this.ctx.strokeStyle = '#dc2626'; this.ctx.lineWidth = 2.5;
+    this.ctx.beginPath();
+    let started = false;
+    for (let i = 0; i <= steps; i++) {
+      const x  = -1 + (i/steps)*2;
+      const y  = this.predict(x);
+      const px = ((x+1)/2)*W;
+      const py = H - ((y+1)/2)*H;
+      if (py < -10 || py > H+10) { started = false; continue; } // clip
+      started ? this.ctx.lineTo(px, py) : this.ctx.moveTo(px, py);
+      started = true;
+    }
+    this.ctx.stroke();
   }
 
   render() {
-    const { width, height } = this.canvas;
-    this.ctx.clearRect(0, 0, width, height);
+    const { width: W, height: H } = this.canvas;
+    this.ctx.clearRect(0, 0, W, H);
+    this.ctx.fillStyle = '#fff'; this.ctx.fillRect(0, 0, W, H);
 
-    // White background
-    this.ctx.fillStyle = '#ffffff';
-    this.ctx.fillRect(0, 0, width, height);
-
-    // Axis lines (center cross)
-    this.ctx.strokeStyle = '#e2e8f0';
-    this.ctx.lineWidth = 1;
+    // Axis guides
+    this.ctx.strokeStyle = '#f1f5f9'; this.ctx.lineWidth = 1;
     this.ctx.beginPath();
-    this.ctx.moveTo(width / 2, 0);
-    this.ctx.lineTo(width / 2, height);
-    this.ctx.moveTo(0, height / 2);
-    this.ctx.lineTo(width, height / 2);
+    this.ctx.moveTo(W/2,0); this.ctx.lineTo(W/2,H);
+    this.ctx.moveTo(0,H/2); this.ctx.lineTo(W,H/2);
     this.ctx.stroke();
 
-    // 1. Residual lines (vertical from point to regression line)
+    // Residual lines
     this.points.forEach(({ x, y }) => {
-      const px  = ((x + 1) / 2) * width;
-      const py  = height - ((y + 1) / 2) * height;
-      const yHat = this.predict(x);
-      const pyHat = height - ((yHat + 1) / 2) * height;
-
-      const residual = y - yHat;
-      this.ctx.strokeStyle = residual > 0
-        ? 'rgba(37, 99, 235, 0.35)'
-        : 'rgba(220, 38, 38, 0.35)';
+      const px    = ((x+1)/2)*W;
+      const py    = H-((y+1)/2)*H;
+      const yHat  = this.predict(x);
+      const pyHat = H-((yHat+1)/2)*H;
+      this.ctx.strokeStyle = y > yHat ? 'rgba(29,78,216,.35)' : 'rgba(220,38,38,.35)';
       this.ctx.lineWidth = 1.5;
-      this.ctx.beginPath();
-      this.ctx.moveTo(px, py);
-      this.ctx.lineTo(px, pyHat);
-      this.ctx.stroke();
+      this.ctx.beginPath(); this.ctx.moveTo(px, py); this.ctx.lineTo(px, pyHat); this.ctx.stroke();
     });
 
-    // 2. Regression line
-    const x1 = -1, x2 = 1;
-    const y1 = this.predict(x1);
-    const y2 = this.predict(x2);
-    this.ctx.strokeStyle = '#dc2626';
-    this.ctx.lineWidth = 2.5;
-    this.ctx.beginPath();
-    this.ctx.moveTo(((x1 + 1) / 2) * width, height - ((y1 + 1) / 2) * height);
-    this.ctx.lineTo(((x2 + 1) / 2) * width, height - ((y2 + 1) / 2) * height);
-    this.ctx.stroke();
+    // Fitted curve
+    this._drawCurve(W, H);
 
-    // 3. Data points (on top of residuals)
+    // Data points
     this.points.forEach(({ x, y }) => {
-      const px = ((x + 1) / 2) * width;
-      const py = height - ((y + 1) / 2) * height;
-      this.ctx.beginPath();
-      this.ctx.arc(px, py, 4, 0, Math.PI * 2);
-      this.ctx.fillStyle = '#1d4ed8';
-      this.ctx.fill();
-      this.ctx.strokeStyle = '#fff';
-      this.ctx.lineWidth = 1;
-      this.ctx.stroke();
+      const px = ((x+1)/2)*W, py = H-((y+1)/2)*H;
+      this.ctx.beginPath(); this.ctx.arc(px, py, 4, 0, Math.PI*2);
+      this.ctx.fillStyle = '#1d4ed8'; this.ctx.fill();
+      this.ctx.strokeStyle = '#fff'; this.ctx.lineWidth = 1; this.ctx.stroke();
     });
 
-    // 4. Info panel (top-left)
-    const metrics = this.computeMetrics();
-    const r2 = this.computeR2();
-    const bSign = this.b >= 0 ? '+' : '';
-
+    // Info panel
+    const m   = this.computeMetrics();
+    const r2  = this._r2();
+    const deg = Math.round(this.params.degree || 1);
+    const eqParts = this.weights.map((w, i) => {
+      if (i===0) return w.toFixed(2);
+      if (i===1) return `${w>=0?'+':''}${w.toFixed(2)}x`;
+      return `${w>=0?'+':''}${w.toFixed(2)}x^${i}`;
+    });
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(255,255,255,0.93)';
-    this.ctx.beginPath();
-    this.ctx.roundRect(8, 8, 240, 100, 6);
-    this.ctx.fill();
-    this.ctx.strokeStyle = '#d1d5db';
-    this.ctx.lineWidth = 1;
-    this.ctx.stroke();
-
-    this.ctx.fillStyle = '#1e293b';
-    this.ctx.font = 'bold 12px sans-serif';
-    this.ctx.textAlign = 'left';
-    this.ctx.fillText(`Epoch: ${this.epoch} / ${this.params.epochs}`, 18, 28);
-    this.ctx.font = '11px sans-serif';
-    this.ctx.fillStyle = '#374151';
-    this.ctx.fillText(`ŷ = ${this.m.toFixed(3)}x ${bSign}${this.b.toFixed(3)}`, 18, 46);
-    this.ctx.fillText(`MSE (loss): ${metrics.loss.toFixed(5)}`, 18, 62);
-    this.ctx.fillText(`MAE: ${metrics.mae.toFixed(5)}`, 18, 78);
-    this.ctx.fillText(`R²: ${r2.toFixed(4)}`, 18, 94);
+    this.ctx.fillStyle = 'rgba(255,255,255,.93)';
+    this.ctx.beginPath(); this.ctx.roundRect(8, 8, 248, 94, 6); this.ctx.fill();
+    this.ctx.strokeStyle = '#e2e8f0'; this.ctx.lineWidth = 1; this.ctx.stroke();
+    const lines = [
+      `Epoch: ${this.epoch} / ${this.params.epochs}`,
+      `Degree: ${deg}  |  L2: ${(this.params.l2||0).toFixed(3)}`,
+      `MSE: ${m.loss.toFixed(5)}  |  R²: ${r2.toFixed(4)}`,
+      `ŷ = ${eqParts.join(' ')}`,
+    ];
+    lines.forEach((line, i) => {
+      this.ctx.font      = i===0 ? 'bold 12px sans-serif' : '11px sans-serif';
+      this.ctx.fillStyle = i===0 ? '#1e293b' : '#374151';
+      this.ctx.textAlign = 'left';
+      this.ctx.fillText(line, 18, 26+i*17);
+    });
     this.ctx.restore();
 
-    // 5. Residual legend (bottom-right)
+    // Residual legend (bottom-right)
     this.ctx.save();
-    this.ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    this.ctx.beginPath();
-    this.ctx.roundRect(width - 170, height - 58, 162, 50, 6);
-    this.ctx.fill();
-    this.ctx.strokeStyle = '#d1d5db';
-    this.ctx.lineWidth = 1;
-    this.ctx.stroke();
-
-    this.ctx.fillStyle = '#374151';
-    this.ctx.font = 'bold 10px sans-serif';
-    this.ctx.textAlign = 'left';
-    this.ctx.fillText('Residuals', width - 158, height - 43);
-
-    this.ctx.strokeStyle = 'rgba(37,99,235,0.7)';
-    this.ctx.lineWidth = 2;
-    this.ctx.beginPath();
-    this.ctx.moveTo(width - 158, height - 28);
-    this.ctx.lineTo(width - 140, height - 28);
-    this.ctx.stroke();
-    this.ctx.fillStyle = '#374151';
-    this.ctx.font = '10px sans-serif';
-    this.ctx.fillText('Above line (y > ŷ)', width - 136, height - 24);
-
-    this.ctx.strokeStyle = 'rgba(220,38,38,0.7)';
-    this.ctx.beginPath();
-    this.ctx.moveTo(width - 158, height - 14);
-    this.ctx.lineTo(width - 140, height - 14);
-    this.ctx.stroke();
-    this.ctx.fillText('Below line (y < ŷ)', width - 136, height - 10);
+    this.ctx.fillStyle = 'rgba(255,255,255,.92)';
+    this.ctx.beginPath(); this.ctx.roundRect(W-162, H-54, 154, 46, 6); this.ctx.fill();
+    this.ctx.strokeStyle = '#e2e8f0'; this.ctx.lineWidth = 1; this.ctx.stroke();
+    this.ctx.font = 'bold 10px sans-serif'; this.ctx.fillStyle = '#374151'; this.ctx.textAlign = 'left';
+    this.ctx.fillText('Residuals', W-150, H-38);
+    [['rgba(29,78,216,.7)', 'y > ŷ (above)'], ['rgba(220,38,38,.7)', 'y < ŷ (below)']].forEach(([color, label], i) => {
+      this.ctx.strokeStyle = color; this.ctx.lineWidth = 2;
+      this.ctx.beginPath(); this.ctx.moveTo(W-150, H-24+i*12); this.ctx.lineTo(W-132, H-24+i*12); this.ctx.stroke();
+      this.ctx.fillStyle = '#475569'; this.ctx.font = '10px sans-serif';
+      this.ctx.fillText(label, W-128, H-20+i*12);
+    });
     this.ctx.restore();
   }
 
-  computeR2() {
-    const trueValues = this.points.map(pt => pt.y);
+  _r2() {
+    const ys   = this.points.map(pt => pt.y);
     const preds = this.points.map(pt => this.predict(pt.x));
-    const mean = trueValues.reduce((s, v) => s + v, 0) / (trueValues.length || 1);
-    let ssTot = 0, ssRes = 0;
-    trueValues.forEach((v, i) => {
-      ssTot += (v - mean) ** 2;
-      ssRes += (v - preds[i]) ** 2;
-    });
-    return ssTot === 0 ? 0 : 1 - ssRes / ssTot;
+    const mean = ys.reduce((s,v)=>s+v,0)/(ys.length||1);
+    let ssTot=0, ssRes=0;
+    ys.forEach((v,i) => { ssTot += (v-mean)**2; ssRes += (v-preds[i])**2; });
+    return ssTot===0 ? 0 : 1 - ssRes/ssTot;
   }
 
   computeMetrics() {
-    const trueValues = this.points.map(pt => pt.y);
-    const preds = this.points.map(pt => this.predict(pt.x));
-    return this.computeRegressionMetrics(trueValues, preds);
+    const trueVals = this.points.map(pt => pt.y);
+    const preds    = this.points.map(pt => this.predict(pt.x));
+    return this.computeRegressionMetrics(trueVals, preds);
   }
 }
