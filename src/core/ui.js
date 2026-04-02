@@ -12,6 +12,8 @@ export class UIController {
 
     this._bindTopbarButtons();
     this._bindSpeedSlider();
+    this._bindDarkToggle();
+    this._bindAlgoInfoToggle();
   }
 
   // ── Topbar ──────────────────────────────────────────────────
@@ -30,6 +32,45 @@ export class UIController {
       this.simulationManager.reset();
       this.renderMetrics([]);
       this._updateEpoch([]);
+    });
+  }
+
+  _bindDarkToggle() {
+    const btn  = document.getElementById('dark-toggle');
+    const icon = document.getElementById('dark-icon');
+    if (!btn) return;
+
+    const SUN_PATH  = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+    const MOON_PATH = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+
+    // Restore from localStorage
+    const saved = localStorage.getItem('mlp-theme');
+    if (saved === 'dark') {
+      document.documentElement.dataset.theme = 'dark';
+      if (icon) icon.innerHTML = SUN_PATH;
+    }
+
+    btn.addEventListener('click', () => {
+      const isDark = document.documentElement.dataset.theme === 'dark';
+      if (isDark) {
+        delete document.documentElement.dataset.theme;
+        localStorage.setItem('mlp-theme', 'light');
+        if (icon) icon.innerHTML = MOON_PATH;
+      } else {
+        document.documentElement.dataset.theme = 'dark';
+        localStorage.setItem('mlp-theme', 'dark');
+        if (icon) icon.innerHTML = SUN_PATH;
+      }
+    });
+  }
+
+  _bindAlgoInfoToggle() {
+    const header = document.getElementById('algo-info-toggle');
+    const box    = document.getElementById('algo-info-box');
+    if (!header || !box) return;
+    header.addEventListener('click', () => {
+      const collapsed = box.classList.toggle('collapsed');
+      header.classList.toggle('collapsed', collapsed);
     });
   }
 
@@ -153,7 +194,53 @@ export class UIController {
     if (sim) {
       this.renderDataParams(sim);
       this.renderHyperParams(sim);
+      this.renderAlgoInfo(sim);
       this.setupMetrics(sim);
+    }
+  }
+
+  renderAlgoInfo(sim) {
+    const box = document.getElementById('algo-info-box');
+    if (!box) return;
+    box.innerHTML = '';
+
+    const info = sim.info;
+    if (!info) return;
+
+    // Set measured height before possible collapse
+    box.style.maxHeight = '';
+
+    if (info.tagline) {
+      const tag = document.createElement('div');
+      tag.className = 'algo-info-tagline';
+      tag.textContent = info.tagline;
+      box.appendChild(tag);
+    }
+
+    if (info.description) {
+      const desc = document.createElement('p');
+      desc.className = 'algo-info-desc';
+      desc.textContent = info.description;
+      box.appendChild(desc);
+    }
+
+    if (info.insights?.length) {
+      const ul = document.createElement('ul');
+      ul.className = 'algo-info-insights';
+      info.insights.forEach(text => {
+        const li = document.createElement('li');
+        li.textContent = text;
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }
+
+    // Measure and set max-height so CSS transition works
+    const h = box.scrollHeight;
+    box.style.maxHeight = `${h}px`;
+    // If previously collapsed, keep it collapsed
+    if (box.classList.contains('collapsed')) {
+      box.style.maxHeight = '0';
     }
   }
 
@@ -401,14 +488,18 @@ export class UIController {
       const ctx = canvas.getContext('2d');
       const W = canvas.width, H = canvas.height;
       const pad = { t: 8, r: 8, b: 20, l: 36 };
+      const dark = document.documentElement.dataset.theme === 'dark';
+      const cBg   = dark ? '#1e293b' : '#f8fafc';
+      const cMute = dark ? '#64748b' : '#94a3b8';
+      const cGrid = dark ? '#334155' : '#e2e8f0';
 
       ctx.clearRect(0, 0, W, H);
-      ctx.fillStyle = '#f8fafc';
+      ctx.fillStyle = cBg;
       ctx.fillRect(0, 0, W, H);
 
       if (!history || history.length === 0) {
         if (valSpan) valSpan.textContent = '—';
-        ctx.fillStyle = '#94a3b8';
+        ctx.fillStyle = cMute;
         ctx.font = '13px system-ui';
         ctx.textAlign = 'center';
         ctx.fillText('No data — press Run', W / 2, H / 2 + 5);
@@ -436,12 +527,12 @@ export class UIController {
 
       for (let i = 0; i <= 3; i++) {
         const yFrac = i / 3, cy = pad.t + yFrac * chartH;
-        ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1;
+        ctx.strokeStyle = cGrid; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(pad.l, cy); ctx.lineTo(W - pad.r, cy); ctx.stroke();
-        ctx.fillStyle = '#94a3b8'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+        ctx.fillStyle = cMute; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
         ctx.fillText((maxY - yFrac * yRange).toFixed(2), pad.l - 4, cy + 3);
       }
-      ctx.fillStyle = '#94a3b8'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+      ctx.fillStyle = cMute; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
       ctx.fillText('Epoch', W / 2, H - 4);
 
       const n = values.length;

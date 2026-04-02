@@ -49,6 +49,11 @@
               Reset
             </button>
           </div>
+          <button id="dark-toggle" class="btn btn-icon" title="Toggle dark mode">
+            <svg id="dark-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+          </button>
           <div id="status-badge" class="status-badge">Ready</div>
         </div>
       </header>
@@ -69,6 +74,13 @@
           <div class="panel-section">
             <div class="section-label">Hyperparameters</div>
             <div id="param-box"></div>
+          </div>
+          <div class="panel-section">
+            <div class="algo-info-header" id="algo-info-toggle">
+              <span class="section-label" style="margin-bottom:0">How it works</span>
+              <svg class="algo-info-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div id="algo-info-box"></div>
           </div>
         </aside>
 

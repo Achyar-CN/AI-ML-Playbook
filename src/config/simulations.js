@@ -50,6 +50,15 @@ export const simulations = [
     taskType: 'classification',
     class: PerceptronSimulation,
     metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    info: {
+      tagline: 'Linear binary classifier',
+      description: 'The simplest learning unit. Iterates through training data and nudges weights whenever a point is misclassified using the perceptron update rule.',
+      insights: [
+        'Only converges on linearly separable data',
+        'High LR → unstable; low LR → slow convergence',
+        'No probabilistic output — purely hard boundary',
+      ],
+    },
     defaultParams: {
       datasetType: 'linear', nPoints: 120, noiseLevel: 0.08, seed: 42,
       learningRate: 0.1, epochs: 100,
@@ -72,6 +81,15 @@ export const simulations = [
     taskType: 'classification',
     class: NNSimulation,
     metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    info: {
+      tagline: 'Universal function approximator',
+      description: 'Stacked layers of nonlinear units trained via backpropagation (chain rule). Can learn arbitrarily complex decision boundaries given enough capacity.',
+      insights: [
+        'More hidden units → more complex boundary, higher overfitting risk',
+        'Tanh & ReLU outperform Sigmoid for hidden layers',
+        'L2 regularization shrinks weights to reduce overfitting',
+      ],
+    },
     defaultParams: {
       datasetType: 'circle', nPoints: 150, noiseLevel: 0.08, seed: 42,
       learningRate: 0.05, epochs: 300, hiddenUnits: 6, activation: 'tanh', l2: 0,
@@ -98,6 +116,15 @@ export const simulations = [
     taskType: 'classification',
     class: DecisionTreeSimulation,
     metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    info: {
+      tagline: 'Recursive partition learner',
+      description: 'Greedily splits feature space by finding thresholds that maximize class purity. Each Run epoch grows the tree one level deeper.',
+      insights: [
+        'Max depth directly controls bias-variance tradeoff',
+        'Gini is faster; Entropy can yield marginally better splits',
+        'Min leaf size acts as implicit pruning',
+      ],
+    },
     defaultParams: {
       datasetType: 'xor', nPoints: 120, noiseLevel: 0.08, seed: 42,
       maxDepth: 6, minLeafSize: 5, useGini: false,
@@ -119,6 +146,15 @@ export const simulations = [
     taskType: 'classification',
     class: AdaBoostSimulation,
     metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    info: {
+      tagline: 'Boosting ensemble of decision stumps',
+      description: 'Trains weak learners (depth-1 trees) sequentially. Each round re-weights training data so the next stump focuses harder on previously misclassified points.',
+      insights: [
+        'More boosting rounds = more complex ensemble',
+        'Shrinkage < 1 scales each stump's vote → more stable training',
+        'Sensitive to noisy labels — outliers get repeatedly up-weighted',
+      ],
+    },
     defaultParams: {
       datasetType: 'linear', nPoints: 120, noiseLevel: 0.08, seed: 42,
       epochs: 20, learningRate: 1.0,
@@ -142,6 +178,15 @@ export const simulations = [
     taskType: 'regression',
     class: LinearRegressionSimulation,
     metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae'],
+    info: {
+      tagline: 'Gradient descent curve fitter',
+      description: 'Minimizes Mean Squared Error by repeatedly adjusting weights in the direction that reduces the loss. Polynomial features (x², x³…) allow fitting nonlinear curves.',
+      insights: [
+        'Higher degree → more flexible fit but risk of overfitting',
+        'L2 (Ridge) regularization keeps weights small and curves smoother',
+        'If loss diverges, reduce learning rate',
+      ],
+    },
     defaultParams: {
       datasetType: 'linear', nPoints: 100, noiseLevel: 0.25, seed: 42,
       learningRate: 0.05, epochs: 200, degree: 1, l2: 0,
