@@ -3,35 +3,85 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ML Playground</title>
-    <script type="module" crossorigin src="/AI-ML-Playbook/assets/index-BQ_28Bod.js"></script>
-    <link rel="stylesheet" crossorigin href="/AI-ML-Playbook/assets/index-BSBDZXp4.css">
+    <title>ML/AI Playground</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles/app.css" />
   </head>
   <body>
-    <div id="app" class="app">
-      <main id="main" class="main">
-        <header class="topbar">
-          <div>
-            <h1>ML/AI Simulation Playground</h1>
-            <small>Interaktif: klik start / pause / reset dan lihat metrik realtime.</small>
-          </div>
-          <div id="statusText" class="status-text">Status: Ready</div>
-        </header>
+    <div id="app">
 
-        <div class="content-grid">
-          <aside id="controls" class="controls-panel">
-            <h2>Parameters</h2>
-            <div id="param-box" class="param-box"></div>
-          </aside>
-
-          <section class="output-section">
-            <div class="visualization-panel">
-              <section id="simulation-root" class="simulation-root"></section>
-            </div>
-            <aside id="metrics" class="metrics"></aside>
-          </section>
+      <!-- TOP BAR -->
+      <header class="topbar">
+        <div class="topbar-brand">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+          </svg>
+          <span>ML Playground</span>
         </div>
-      </main>
+
+        <div class="topbar-center">
+          <div class="epoch-counter">
+            <span class="epoch-label">Epoch</span>
+            <span id="epoch-display" class="epoch-value">—</span>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <div class="speed-control">
+            <span class="speed-label">Speed</span>
+            <input type="range" id="speed-slider" min="1" max="60" value="8" class="speed-slider" />
+            <span id="speed-val" class="speed-val">8<small>/s</small></span>
+          </div>
+          <div class="topbar-buttons">
+            <button id="start-btn" class="btn btn-run">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run
+            </button>
+            <button id="pause-btn" class="btn btn-pause">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+              Pause
+            </button>
+            <button id="reset-btn" class="btn btn-reset">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4"/></svg>
+              Reset
+            </button>
+          </div>
+          <div id="status-badge" class="status-badge">Ready</div>
+        </div>
+      </header>
+
+      <!-- WORKSPACE: 3-column -->
+      <div class="workspace">
+
+        <!-- LEFT: Algorithm selector + Params -->
+        <aside class="panel-left" id="controls">
+          <div class="panel-section">
+            <div class="section-label">Algorithm</div>
+            <div id="algo-selector-box"></div>
+          </div>
+          <div class="panel-section">
+            <div class="section-label">Hyperparameters</div>
+            <div id="param-box"></div>
+          </div>
+        </aside>
+
+        <!-- CENTER: Visualization -->
+        <main class="panel-center">
+          <div id="simulation-root" class="simulation-root"></div>
+        </main>
+
+        <!-- RIGHT: Metrics -->
+        <aside class="panel-right">
+          <div class="section-label">Metrics</div>
+          <div id="metrics"></div>
+        </aside>
+
+      </div>
     </div>
+
+    <script type="module" src="src/main.js"></script>
   </body>
 </html>
