@@ -1,8 +1,14 @@
-import { PerceptronSimulation }       from '../simulations/perceptron/index.js';
-import { NNSimulation }               from '../simulations/nn/index.js';
-import { LinearRegressionSimulation }  from '../simulations/linearRegression/index.js';
-import { DecisionTreeSimulation }     from '../simulations/decisionTree/index.js';
-import { AdaBoostSimulation }         from '../simulations/adaboost/index.js';
+import { PerceptronSimulation }              from '../simulations/perceptron/index.js';
+import { NNSimulation }                      from '../simulations/nn/index.js';
+import { LinearRegressionSimulation }        from '../simulations/linearRegression/index.js';
+import { DecisionTreeSimulation }            from '../simulations/decisionTree/index.js';
+import { AdaBoostSimulation }               from '../simulations/adaboost/index.js';
+import { KNNClassificationSimulation,
+         KNNRegressionSimulation }           from '../simulations/knn/index.js';
+import { RandomForestClassificationSimulation,
+         RandomForestRegressionSimulation }  from '../simulations/randomForest/index.js';
+import { SVMClassificationSimulation,
+         SVRSimulation }                     from '../simulations/svm/index.js';
 
 const CLASS_DATASETS = [
   { id: 'linear',       label: 'Linear' },
@@ -171,6 +177,102 @@ export const simulations = [
     ],
   },
 
+  {
+    id: 'knn',
+    title: 'K-Nearest Neighbors',
+    taskType: 'classification',
+    class: KNNClassificationSimulation,
+    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    info: {
+      tagline: 'Lazy instance-based learner',
+      description: 'No training phase — classifies each point by majority vote among its K nearest neighbors. The decision boundary adapts to the data density.',
+      insights: [
+        'Small k = complex wiggly boundary (low bias, high variance)',
+        'Large k = smoother boundary (high bias, low variance)',
+        'Manhattan distance works better when features have different scales',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'moons', nPoints: 150, noiseLevel: 0.1, seed: 42, k: 5,
+      distanceMetric: 'euclidean',
+    },
+    dataParamControls: classDataParams(CLASS_DATASETS, 'moons'),
+    paramControls: [
+      { name: 'k', label: 'K (Neighbors)', type: 'number', min: 1, max: 30, step: 1,
+        description: 'Number of nearest neighbors to vote. Lower = more complex boundary.' },
+      { name: 'distanceMetric', label: 'Distance Metric', type: 'select',
+        options: [{ value: 'euclidean', label: 'Euclidean' }, { value: 'manhattan', label: 'Manhattan' }],
+        description: 'Euclidean = straight-line distance. Manhattan = city-block distance.' },
+    ],
+  },
+
+  {
+    id: 'randomForestClass',
+    title: 'Random Forest',
+    taskType: 'classification',
+    class: RandomForestClassificationSimulation,
+    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    info: {
+      tagline: 'Bagging ensemble of random trees',
+      description: 'Builds many decision trees on bootstrap samples, each node splitting on a randomly chosen feature. Final prediction = majority vote across all trees.',
+      insights: [
+        'More trees = more stable predictions (law of large numbers)',
+        'Random feature selection reduces tree correlation — key to ensemble benefit',
+        'Each Run step adds one new tree to the forest',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'spiral', nPoints: 150, noiseLevel: 0.08, seed: 42,
+      nTrees: 20, maxDepth: 4, minLeafSize: 3,
+    },
+    dataParamControls: classDataParams(CLASS_DATASETS, 'spiral'),
+    paramControls: [
+      { name: 'nTrees', label: 'Trees (Epochs)', type: 'number', min: 1, max: 60, step: 1,
+        description: 'Total trees to grow. Each Run step adds one tree.' },
+      { name: 'maxDepth', label: 'Max Tree Depth', type: 'number', min: 1, max: 10, step: 1,
+        description: 'Max depth of each individual tree. Deeper = more complex.' },
+      { name: 'minLeafSize', label: 'Min Leaf Size', type: 'number', min: 2, max: 20, step: 1,
+        description: 'Min samples to split a node. Higher = smoother, more pruned trees.' },
+    ],
+  },
+
+  {
+    id: 'svm',
+    title: 'SVM',
+    taskType: 'classification',
+    class: SVMClassificationSimulation,
+    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    info: {
+      tagline: 'Maximum-margin hyperplane classifier',
+      description: 'Finds the decision boundary that maximizes the margin between classes. Soft-margin SVM allows some misclassifications controlled by C. Yellow-ringed points are support vectors.',
+      insights: [
+        'High C = harder margin, fits training data tightly (risk of overfit)',
+        'Low C = soft margin, more regularization',
+        'Poly-2 kernel adds x\u00b2, y\u00b2, xy features enabling curved boundaries',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'linear', nPoints: 120, noiseLevel: 0.08, seed: 42,
+      C: 1.0, kernel: 'linear', learningRate: 0.05, epochs: 300,
+    },
+    dataParamControls: classDataParams(
+      [{ id: 'linear', label: 'Linear' }, { id: 'moons', label: 'Moons' },
+       { id: 'circle', label: 'Circle' }, { id: 'xor', label: 'XOR' }, { id: 'diagonal', label: 'Diagonal' }],
+      'linear'
+    ),
+    paramControls: [
+      { name: 'C', label: 'C (Regularization)', type: 'number', min: 0.1, max: 10, step: 0.1,
+        description: 'Penalty for misclassified points. High C = hard margin.' },
+      { name: 'kernel', label: 'Kernel', type: 'select',
+        options: [{ value: 'linear', label: 'Linear' }, { value: 'poly2', label: 'Polynomial (deg 2)' }],
+        description: 'Linear: straight boundary. Poly-2: curved boundary using degree-2 features.' },
+      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 0.2, step: 0.005,
+        description: 'Gradient descent step size.' },
+      { name: 'epochs', label: 'Epochs', type: 'number', min: 50, max: 1000, step: 50,
+        description: 'Gradient descent iterations.' },
+    ],
+  },
+
   // ── Regression ───────────────────────────────────────────────
   {
     id: 'linearRegression',
@@ -201,6 +303,100 @@ export const simulations = [
         description: 'Degree 1 = line, 2 = parabola, 3–6 = higher-order curves.' },
       { name: 'l2', label: 'L2 (Ridge) Regularization', type: 'number', min: 0, max: 0.2, step: 0.005,
         description: 'Penalizes large weights. Helps prevent overfitting on high-degree poly.' },
+    ],
+  },
+
+  {
+    id: 'knnRegression',
+    title: 'KNN Regression',
+    taskType: 'regression',
+    class: KNNRegressionSimulation,
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae'],
+    info: {
+      tagline: 'Lazy instance-based regressor',
+      description: 'Predicts the target as the mean of the K nearest training points. No model weights — every prediction scans the full dataset.',
+      insights: [
+        'Small k = wiggly fit that interpolates closely (overfits)',
+        'Large k = smooth fit that averages over noise (underfits)',
+        'Works well when the relationship is locally smooth',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42,
+      k: 5, distanceMetric: 'euclidean',
+    },
+    dataParamControls: regDataParams,
+    paramControls: [
+      { name: 'k', label: 'K (Neighbors)', type: 'number', min: 1, max: 30, step: 1,
+        description: 'Number of nearest neighbors. Low k = wiggly, high k = smooth.' },
+      { name: 'distanceMetric', label: 'Distance Metric', type: 'select',
+        options: [{ value: 'euclidean', label: 'Euclidean' }, { value: 'manhattan', label: 'Manhattan' }],
+        description: 'For 1D regression both metrics are equivalent.' },
+    ],
+  },
+
+  {
+    id: 'randomForestReg',
+    title: 'Random Forest Reg.',
+    taskType: 'regression',
+    class: RandomForestRegressionSimulation,
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae'],
+    info: {
+      tagline: 'Ensemble of regression trees',
+      description: 'Each tree splits training data to minimize MSE. Prediction = mean across all trees. Bootstrap sampling reduces variance without increasing bias.',
+      insights: [
+        'More trees = lower variance via averaging',
+        'Shallow trees = high bias; deep trees = high variance',
+        'Naturally handles nonlinear patterns without feature engineering',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42,
+      nTrees: 20, maxDepth: 4, minLeafSize: 3,
+    },
+    dataParamControls: regDataParams,
+    paramControls: [
+      { name: 'nTrees', label: 'Trees (Epochs)', type: 'number', min: 1, max: 60, step: 1,
+        description: 'Total trees to grow. Each Run step adds one tree.' },
+      { name: 'maxDepth', label: 'Max Tree Depth', type: 'number', min: 1, max: 10, step: 1,
+        description: 'Max depth of each individual tree.' },
+      { name: 'minLeafSize', label: 'Min Leaf Size', type: 'number', min: 2, max: 20, step: 1,
+        description: 'Min samples to split a node.' },
+    ],
+  },
+
+  {
+    id: 'svr',
+    title: 'SVR',
+    taskType: 'regression',
+    class: SVRSimulation,
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae'],
+    info: {
+      tagline: 'Epsilon-insensitive tube regressor',
+      description: 'Fits a tube of width 2\u03b5 around the data. Points inside the tube incur zero loss. Only points outside (support vectors, shown in yellow) influence the fit.',
+      insights: [
+        'Larger \u03b5 = wider tube = fewer support vectors = smoother fit',
+        'Higher C = heavier penalty for points outside the tube',
+        'Poly-2 kernel enables fitting quadratic and parabolic curves',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42,
+      C: 1.0, epsilon: 0.1, kernel: 'linear', learningRate: 0.02, epochs: 300,
+    },
+    dataParamControls: regDataParams,
+    paramControls: [
+      { name: 'C', label: 'C (Regularization)', type: 'number', min: 0.1, max: 10, step: 0.1,
+        description: 'Penalty for points outside the epsilon tube.' },
+      { name: 'epsilon', label: 'Epsilon (\u03b5)', type: 'number', min: 0.01, max: 0.5, step: 0.01,
+        description: 'Half-width of the insensitive tube around the regression curve.' },
+      { name: 'kernel', label: 'Kernel', type: 'select',
+        options: [{ value: 'linear', label: 'Linear' }, { value: 'poly2', label: 'Polynomial (deg 2)' }],
+        description: 'Linear: straight line. Poly-2: parabola.' },
+      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 0.1, step: 0.005,
+        description: 'Gradient descent step size.' },
+      { name: 'epochs', label: 'Epochs', type: 'number', min: 50, max: 1000, step: 50,
+        description: 'Gradient descent iterations.' },
     ],
   },
 ];

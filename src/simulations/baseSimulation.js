@@ -1,3 +1,5 @@
+import { dataStore } from '../core/dataStore.js';
+
 export class BaseSimulation {
   constructor({ container, params = {} }) {
     this.container = container;
@@ -103,6 +105,7 @@ export class BaseSimulation {
   // ── Dataset Generators ─────────────────────────────────────
   // Returns [{x, y, label}] — x,y in roughly [-1,1], label in {0,1}
   generateClassDataset(type, nPoints, seed, noiseLevel = 0.08) {
+    if (dataStore.points && dataStore.type === 'classification') return [...dataStore.points];
     const pts = [];
     const rng  = this.seededRandom(seed);
     const rand = () => rng() * 2 - 1; // [-1,1]
@@ -154,6 +157,7 @@ export class BaseSimulation {
 
   // Returns [{x, y}] — x in [-1,1], y approx in [-1,1]
   generateRegressionDataset(type, nPoints, seed, noiseLevel = 0.3) {
+    if (dataStore.points && dataStore.type === 'regression') return [...dataStore.points];
     const pts = [];
     const rng  = this.seededRandom(seed);
 

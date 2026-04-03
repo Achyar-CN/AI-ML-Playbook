@@ -66,6 +66,12 @@
           <div class="panel-section">
             <div class="section-label">Algorithm</div>
             <div id="algo-selector-box"></div>
+            <!-- How it works: collapsed by default, right below dropdown -->
+            <div class="algo-info-header collapsed" id="algo-info-toggle">
+              <span class="section-label" style="margin-bottom:0">How it works</span>
+              <svg class="algo-info-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div id="algo-info-box" class="algo-info-body collapsed"></div>
           </div>
           <div class="panel-section">
             <div class="section-label">Data</div>
@@ -74,13 +80,6 @@
           <div class="panel-section">
             <div class="section-label">Hyperparameters</div>
             <div id="param-box"></div>
-          </div>
-          <div class="panel-section">
-            <div class="algo-info-header" id="algo-info-toggle">
-              <span class="section-label" style="margin-bottom:0">How it works</span>
-              <svg class="algo-info-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-            </div>
-            <div id="algo-info-box"></div>
           </div>
         </aside>
 

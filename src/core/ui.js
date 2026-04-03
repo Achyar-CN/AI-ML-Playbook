@@ -1,3 +1,17 @@
+import { dataStore } from './dataStore.js';
+
+// ── Preset scenarios ──────────────────────────────────────────────
+const CLASS_PRESETS = [
+  { label: 'Separable', params: { datasetType: 'linear',  noiseLevel: 0.02, nPoints: 100 } },
+  { label: 'Noisy',     params: { datasetType: 'moons',   noiseLevel: 0.38, nPoints: 150 } },
+  { label: 'Outliers',  params: { datasetType: 'linear',  noiseLevel: 0.32, nPoints: 120 } },
+];
+const REG_PRESETS = [
+  { label: 'Separable', params: { datasetType: 'linear',    noiseLevel: 0.04, nPoints: 80  } },
+  { label: 'Noisy',     params: { datasetType: 'sine',      noiseLevel: 0.4,  nPoints: 120 } },
+  { label: 'Outliers',  params: { datasetType: 'noisy',     noiseLevel: 0.75, nPoints: 100 } },
+];
+
 export class UIController {
   constructor({ controlsPanel, simulationManager, stateManager, simulations }) {
     this.controlsPanel     = controlsPanel;
@@ -92,7 +106,7 @@ export class UIController {
     if (!this.epochDisplay) return;
     // Always read max from the live params (reflects slider changes instantly)
     const p        = this.simulationManager.current?.params;
-    const maxEpoch = p ? (p.epochs ?? p.maxDepth ?? '?') : '?';
+    const maxEpoch = p ? (p.epochs ?? p.nTrees ?? p.maxDepth ?? '?') : '?';
     if (!history || history.length === 0) {
       this.epochDisplay.textContent = `— / ${maxEpoch}`;
       return;
@@ -234,6 +248,20 @@ export class UIController {
     if (!box) return;
     box.innerHTML = '';
 
+    // ── Preset scenario buttons ─────────────────────────────────
+    const presets = sim.taskType === 'regression' ? REG_PRESETS : CLASS_PRESETS;
+    const presetRow = document.createElement('div');
+    presetRow.className = 'preset-row';
+    presets.forEach(({ label, params }) => {
+      const btn = document.createElement('button');
+      btn.className = 'preset-btn';
+      btn.textContent = label;
+      btn.title = Object.entries(params).map(([k, v]) => `${k}: ${v}`).join(', ');
+      btn.addEventListener('click', () => this._applyPreset(params, sim));
+      presetRow.appendChild(btn);
+    });
+    box.appendChild(presetRow);
+
     const defaults = sim.defaultParams || {};
     const controls = sim.dataParamControls || [];
 
@@ -262,6 +290,146 @@ export class UIController {
 
       box.appendChild(this._buildSliderField(field, value));
     });
+
+    // ── CSV import ──────────────────────────────────────────────
+    box.appendChild(this._buildCSVImport(sim));
+  }
+
+  _applyPreset(params, sim) {
+    // Update state manager so chip/slider UI reflects new values
+    Object.entries(params).forEach(([k, v]) => this.stateManager.setState({ [k]: v }));
+    this.simulationManager.updateCurrentParams(params);
+    this.renderDataParams(sim); // re-render chips + sliders with new values
+    this.setStatus('ready');
+  }
+
+  _buildCSVImport(sim) {
+    const wrap = document.createElement('div');
+    wrap.className = 'csv-import-section';
+
+    const header = document.createElement('div');
+    header.className = 'csv-import-header';
+
+    const label = document.createElement('span');
+    label.className = 'csv-import-label';
+    label.textContent = 'Import CSV';
+
+    const sampleLink = document.createElement('a');
+    sampleLink.className = 'csv-sample-link';
+    sampleLink.href = sim.taskType === 'regression'
+      ? 'samples/regression_sample.csv'
+      : 'samples/classification_sample.csv';
+    sampleLink.download = '';
+    sampleLink.textContent = 'sample';
+
+    header.appendChild(label);
+    header.appendChild(sampleLink);
+    wrap.appendChild(header);
+
+    // Status / filename row
+    const status = document.createElement('div');
+    status.className = 'csv-status';
+    if (dataStore.points && dataStore.type === sim.taskType) {
+      status.textContent = `\u2713 ${dataStore.filename || 'custom data'} (${dataStore.points.length} pts)`;
+      status.classList.add('loaded');
+    } else {
+      status.textContent = 'No file loaded';
+    }
+    wrap.appendChild(status);
+
+    const fileRow = document.createElement('div');
+    fileRow.className = 'csv-file-row';
+
+    const fileInput = document.createElement('input');
+    fileInput.type   = 'file';
+    fileInput.accept = '.csv';
+    fileInput.className = 'csv-file-input';
+    fileInput.id = 'csv-file-input';
+
+    const fileLabel = document.createElement('label');
+    fileLabel.htmlFor   = 'csv-file-input';
+    fileLabel.className = 'btn csv-choose-btn';
+    fileLabel.textContent = 'Choose file';
+
+    const clearBtn = document.createElement('button');
+    clearBtn.className   = 'btn csv-clear-btn';
+    clearBtn.textContent = 'Clear';
+    clearBtn.disabled    = !(dataStore.points && dataStore.type === sim.taskType);
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      this._handleCSVUpload(file, sim);
+    });
+
+    clearBtn.addEventListener('click', () => {
+      dataStore.points   = null;
+      dataStore.type     = null;
+      dataStore.filename = null;
+      this.simulationManager.updateCurrentParams({});
+      this.renderDataParams(sim);
+    });
+
+    fileRow.appendChild(fileInput);
+    fileRow.appendChild(fileLabel);
+    fileRow.appendChild(clearBtn);
+    wrap.appendChild(fileRow);
+
+    const fmt = document.createElement('p');
+    fmt.className = 'csv-format-hint';
+    fmt.textContent = sim.taskType === 'regression'
+      ? 'Format: x,y  (header row optional)'
+      : 'Format: x1,x2,label  (label = 0 or 1)';
+    wrap.appendChild(fmt);
+
+    return wrap;
+  }
+
+  _handleCSVUpload(file, sim) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const rows = e.target.result.trim().split('\n')
+          .map(r => r.trim()).filter(r => r.length > 0);
+
+        // Skip header row if first cell is non-numeric
+        const startIdx = isNaN(parseFloat(rows[0].split(',')[0])) ? 1 : 0;
+        const data = rows.slice(startIdx).map(row => row.split(',').map(v => parseFloat(v.trim())));
+
+        if (sim.taskType === 'regression') {
+          const raw = data.filter(r => r.length >= 2 && !isNaN(r[0]) && !isNaN(r[1]));
+          if (!raw.length) throw new Error('No valid rows');
+          const xs = raw.map(r => r[0]), ys = raw.map(r => r[1]);
+          const normalize = (vals) => {
+            const mn = Math.min(...vals), mx = Math.max(...vals);
+            return mx === mn ? vals.map(() => 0) : vals.map(v => 2 * (v - mn) / (mx - mn) - 1);
+          };
+          const nxs = normalize(xs), nys = normalize(ys);
+          dataStore.points   = nxs.map((x, i) => ({ x, y: nys[i] }));
+          dataStore.type     = 'regression';
+          dataStore.filename = file.name;
+        } else {
+          const raw = data.filter(r => r.length >= 3 && !isNaN(r[0]) && !isNaN(r[1]) && !isNaN(r[2]));
+          if (!raw.length) throw new Error('No valid rows');
+          const x1s = raw.map(r => r[0]), x2s = raw.map(r => r[1]);
+          const normalize = (vals) => {
+            const mn = Math.min(...vals), mx = Math.max(...vals);
+            return mx === mn ? vals.map(() => 0) : vals.map(v => 2 * (v - mn) / (mx - mn) - 1);
+          };
+          const nx1 = normalize(x1s), nx2 = normalize(x2s);
+          dataStore.points   = nx1.map((x, i) => ({ x, y: nx2[i], label: raw[i][2] === 1 ? 1 : 0 }));
+          dataStore.type     = 'classification';
+          dataStore.filename = file.name;
+        }
+
+        this.simulationManager.updateCurrentParams({});
+        this.renderDataParams(sim);
+        this.setStatus('ready');
+      } catch {
+        alert('CSV parse error. Check the format hint below the import button.');
+      }
+    };
+    reader.readAsText(file);
   }
 
   // ── Hyperparameter section ────────────────────────────────────

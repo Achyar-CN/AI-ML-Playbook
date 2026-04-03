@@ -206,6 +206,33 @@ input[type="checkbox"].toggle:checked::before { left: 16px; }
 }
 .param-select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(29,78,216,.12); }
 
+/* Preset scenario buttons */
+.preset-row { display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap; }
+.preset-btn {
+  flex: 1; min-width: 60px; padding: 4px 8px; font-size: .7rem; font-weight: 600;
+  border: 1px solid var(--border); border-radius: 20px; background: var(--bg);
+  color: var(--text-secondary); cursor: pointer; white-space: nowrap; font-family: var(--font);
+  transition: background .12s, color .12s, border-color .12s;
+}
+.preset-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* CSV import */
+.csv-import-section { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle); }
+.csv-import-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.csv-import-label { font-size: .7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.csv-sample-link { font-size: .7rem; color: var(--primary); text-decoration: none; }
+.csv-sample-link:hover { text-decoration: underline; }
+.csv-status { font-size: .72rem; color: var(--text-muted); margin-bottom: 6px; }
+.csv-status.loaded { color: #16a34a; font-weight: 500; }
+.csv-file-row { display: flex; align-items: center; gap: 6px; }
+.csv-file-input { display: none; }
+.csv-choose-btn { padding: 4px 10px; font-size: .75rem; background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }
+.csv-choose-btn:hover { background: var(--border); }
+.csv-clear-btn { padding: 4px 10px; font-size: .75rem; background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+.csv-clear-btn:hover:not(:disabled) { background: #ffedd5; }
+.csv-clear-btn:disabled { opacity: .4; cursor: not-allowed; }
+.csv-format-hint { font-size: .68rem; color: var(--text-muted); margin-top: 5px; }
+
 /* Algo info panel */
 .algo-info-header {
   display: flex; align-items: center; justify-content: space-between;
