@@ -28,6 +28,7 @@ export class UIController {
     this._bindSpeedSlider();
     this._bindDarkToggle();
     this._bindAlgoInfoToggle();
+    this._bindSectionCollapses();
   }
 
   // ── Topbar ──────────────────────────────────────────────────
@@ -77,8 +78,24 @@ export class UIController {
     const box    = document.getElementById('algo-info-box');
     if (!header || !box) return;
     header.addEventListener('click', () => {
+      // Pure class toggle — CSS handles max-height via .algo-info-body / .collapsed rules
       const collapsed = box.classList.toggle('collapsed');
       header.classList.toggle('collapsed', collapsed);
+    });
+  }
+
+  _bindSectionCollapses() {
+    [
+      { headerId: 'data-toggle',   bodyId: 'data-param-box' },
+      { headerId: 'params-toggle', bodyId: 'param-box'      },
+    ].forEach(({ headerId, bodyId }) => {
+      const header = document.getElementById(headerId);
+      const body   = document.getElementById(bodyId);
+      if (!header || !body) return;
+      header.addEventListener('click', () => {
+        const collapsed = body.classList.toggle('collapsed');
+        header.classList.toggle('collapsed', collapsed);
+      });
     });
   }
 
@@ -237,9 +254,8 @@ export class UIController {
       box.appendChild(ul);
     }
 
-    // Measure height for CSS max-height transition
-    box.style.maxHeight = box.scrollHeight + 'px';
-    if (box.classList.contains('collapsed')) box.style.maxHeight = '0';
+    // max-height is controlled entirely by CSS classes (.algo-info-body / .collapsed)
+    // Do NOT set inline max-height here — it would override the CSS toggle.
   }
 
   // ── Data section (dataset chips + data sliders) ──────────────
