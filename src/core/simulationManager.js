@@ -9,7 +9,7 @@ export class SimulationManager {
     this.currentMeta = null;
     this.frame = null;
     this.onMetricsUpdate = null;
-    this.stepsPerSecond = 8; // default: 8 steps/second so animation is visible
+    this.stepsPerSecond = 8;
     this._lastStepTime = 0;
     this._running = false;
   }
@@ -26,21 +26,21 @@ export class SimulationManager {
     this.stop();
     this.root.innerHTML = '';
 
-    const meta = this.simulations.get(id);
-    // Merge defaultParams with any caller-supplied initialParams (e.g. from URL state)
+    const meta   = this.simulations.get(id);
     const params = { ...meta.defaultParams, ...initialParams };
 
-    const instance = new meta.class({ container: this.root, params });
+    // Pass taskType so BaseSimulation can compute test metrics correctly
+    const instance = new meta.class({ container: this.root, params, taskType: meta.taskType });
 
     if (!(instance instanceof BaseSimulation)) {
       throw new Error(`Simulation ${id} must extend BaseSimulation`);
     }
 
-    this.current = instance;
-    this.currentId = id;
+    this.current     = instance;
+    this.currentId   = id;
     this.currentMeta = meta;
     this.current.init();
-    this.current.render(); // show initial state
+    this.current.renderWithOverlays();
 
     if (typeof this.onMetricsUpdate === 'function') {
       this.onMetricsUpdate(this.current.history || []);
@@ -55,7 +55,7 @@ export class SimulationManager {
     const wasRunning = this._running;
     this.stop();
     this.current.reset();
-    this.current.render();
+    this.current.renderWithOverlays();
     if (typeof this.onMetricsUpdate === 'function') {
       this.onMetricsUpdate([]);
     }
@@ -76,17 +76,17 @@ export class SimulationManager {
     const loop = (timestamp) => {
       if (!this._running) return;
 
-      // Step only when enough time has elapsed (throttle to stepsPerSecond)
       if (this._lastStepTime === 0 || timestamp - this._lastStepTime >= stepInterval) {
         this.current.step();
+        // Inject test-set metrics into the freshly pushed history entry
+        this.current._injectTestMetrics();
         this._lastStepTime = timestamp;
         if (typeof this.onMetricsUpdate === 'function') {
           this.onMetricsUpdate(this.current.history || []);
         }
       }
 
-      // Render every frame (smooth canvas)
-      this.current.render();
+      this.current.renderWithOverlays();
       this.frame = requestAnimationFrame(loop);
     };
 
@@ -106,7 +106,7 @@ export class SimulationManager {
     this.stop();
     if (this.current) {
       this.current.reset();
-      this.current.render();
+      this.current.renderWithOverlays();
       if (typeof this.onMetricsUpdate === 'function') {
         this.onMetricsUpdate([]);
       }

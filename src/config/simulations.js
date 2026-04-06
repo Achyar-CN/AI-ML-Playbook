@@ -36,6 +36,8 @@ const classDataParams = (datasets, defaultDataset = 'linear') => [
     description: 'Random noise added to class boundaries.' },
   { name: 'seed',        label: 'Random Seed',   type: 'number', min: 0, max: 9999, step: 1,
     description: 'Same seed = same data. Change to try different splits.' },
+  { name: 'testSplit',   label: 'Test Split',    type: 'number', min: 0, max: 0.5, step: 0.05,
+    description: 'Fraction held out as test set. 0 = no split. Test points shown as □.' },
 ];
 
 const regDataParams = [
@@ -46,6 +48,8 @@ const regDataParams = [
     description: 'Noise amplitude around the true function.' },
   { name: 'seed',        label: 'Random Seed',   type: 'number', min: 0, max: 9999, step: 1,
     description: 'Same seed = same data.' },
+  { name: 'testSplit',   label: 'Test Split',    type: 'number', min: 0, max: 0.5, step: 0.05,
+    description: 'Fraction held out as test set. 0 = no split. Test points shown as ◇.' },
 ];
 
 export const simulations = [
@@ -55,7 +59,7 @@ export const simulations = [
     title: 'Perceptron',
     taskType: 'classification',
     class: PerceptronSimulation,
-    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
     info: {
       tagline: 'Linear binary classifier',
       description: 'The simplest learning unit. Iterates through training data and nudges weights whenever a point is misclassified using the perceptron update rule.',
@@ -66,7 +70,7 @@ export const simulations = [
       ],
     },
     defaultParams: {
-      datasetType: 'linear', nPoints: 120, noiseLevel: 0.08, seed: 42,
+      datasetType: 'linear', nPoints: 120, noiseLevel: 0.08, seed: 42, testSplit: 0.2,
       learningRate: 0.1, epochs: 100,
     },
     dataParamControls: classDataParams(
@@ -86,7 +90,7 @@ export const simulations = [
     title: 'Neural Network',
     taskType: 'classification',
     class: NNSimulation,
-    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
     info: {
       tagline: 'Universal function approximator',
       description: 'Stacked layers of nonlinear units trained via backpropagation (chain rule). Can learn arbitrarily complex decision boundaries given enough capacity.',
@@ -97,7 +101,7 @@ export const simulations = [
       ],
     },
     defaultParams: {
-      datasetType: 'circle', nPoints: 150, noiseLevel: 0.08, seed: 42,
+      datasetType: 'circle', nPoints: 150, noiseLevel: 0.08, seed: 42, testSplit: 0.2,
       learningRate: 0.05, epochs: 300, hiddenUnits: 6, activation: 'tanh', l2: 0,
     },
     dataParamControls: classDataParams(CLASS_DATASETS, 'circle'),
@@ -121,7 +125,7 @@ export const simulations = [
     title: 'Decision Tree',
     taskType: 'classification',
     class: DecisionTreeSimulation,
-    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
     info: {
       tagline: 'Recursive partition learner',
       description: 'Greedily splits feature space by finding thresholds that maximize class purity. Each Run epoch grows the tree one level deeper.',
@@ -132,7 +136,7 @@ export const simulations = [
       ],
     },
     defaultParams: {
-      datasetType: 'xor', nPoints: 120, noiseLevel: 0.08, seed: 42,
+      datasetType: 'xor', nPoints: 120, noiseLevel: 0.08, seed: 42, testSplit: 0.2,
       maxDepth: 6, minLeafSize: 5, useGini: false,
     },
     dataParamControls: classDataParams(CLASS_DATASETS, 'xor'),
@@ -151,7 +155,7 @@ export const simulations = [
     title: 'AdaBoost',
     taskType: 'classification',
     class: AdaBoostSimulation,
-    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
     info: {
       tagline: 'Boosting ensemble of decision stumps',
       description: 'Trains weak learners (depth-1 trees) sequentially. Each round re-weights data so the next stump focuses harder on previously misclassified points.',
@@ -162,7 +166,7 @@ export const simulations = [
       ],
     },
     defaultParams: {
-      datasetType: 'linear', nPoints: 120, noiseLevel: 0.08, seed: 42,
+      datasetType: 'linear', nPoints: 120, noiseLevel: 0.08, seed: 42, testSplit: 0.2,
       epochs: 20, learningRate: 1.0,
     },
     dataParamControls: classDataParams(
@@ -182,7 +186,7 @@ export const simulations = [
     title: 'K-Nearest Neighbors',
     taskType: 'classification',
     class: KNNClassificationSimulation,
-    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
     info: {
       tagline: 'Lazy instance-based learner',
       description: 'No training phase — classifies each point by majority vote among its K nearest neighbors. The decision boundary adapts to the data density.',
@@ -193,7 +197,7 @@ export const simulations = [
       ],
     },
     defaultParams: {
-      datasetType: 'moons', nPoints: 150, noiseLevel: 0.1, seed: 42, k: 5,
+      datasetType: 'moons', nPoints: 150, noiseLevel: 0.1, seed: 42, testSplit: 0.2, k: 5,
       distanceMetric: 'euclidean',
     },
     dataParamControls: classDataParams(CLASS_DATASETS, 'moons'),
@@ -211,7 +215,7 @@ export const simulations = [
     title: 'Random Forest',
     taskType: 'classification',
     class: RandomForestClassificationSimulation,
-    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
     info: {
       tagline: 'Bagging ensemble of random trees',
       description: 'Builds many decision trees on bootstrap samples, each node splitting on a randomly chosen feature. Final prediction = majority vote across all trees.',
@@ -222,7 +226,7 @@ export const simulations = [
       ],
     },
     defaultParams: {
-      datasetType: 'spiral', nPoints: 150, noiseLevel: 0.08, seed: 42,
+      datasetType: 'spiral', nPoints: 150, noiseLevel: 0.08, seed: 42, testSplit: 0.2,
       nTrees: 20, maxDepth: 4, minLeafSize: 3,
     },
     dataParamControls: classDataParams(CLASS_DATASETS, 'spiral'),
@@ -241,7 +245,7 @@ export const simulations = [
     title: 'SVM',
     taskType: 'classification',
     class: SVMClassificationSimulation,
-    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1'],
+    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
     info: {
       tagline: 'Maximum-margin hyperplane classifier',
       description: 'Finds the decision boundary that maximizes the margin between classes. Soft-margin SVM allows some misclassifications controlled by C. Yellow-ringed points are support vectors.',
@@ -252,7 +256,7 @@ export const simulations = [
       ],
     },
     defaultParams: {
-      datasetType: 'linear', nPoints: 120, noiseLevel: 0.08, seed: 42,
+      datasetType: 'linear', nPoints: 120, noiseLevel: 0.08, seed: 42, testSplit: 0.2,
       C: 1.0, kernel: 'linear', learningRate: 0.05, epochs: 300,
     },
     dataParamControls: classDataParams(
@@ -279,7 +283,7 @@ export const simulations = [
     title: 'Linear / Poly Regression',
     taskType: 'regression',
     class: LinearRegressionSimulation,
-    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae'],
+    metricKeys: ['loss', 'testLoss', 'mae', 'testMAE', 'rmse', 'mape', 'nmae'],
     info: {
       tagline: 'Gradient descent curve fitter',
       description: 'Minimizes Mean Squared Error by repeatedly adjusting weights opposite to the loss gradient. Polynomial features allow fitting nonlinear curves.',
@@ -290,7 +294,7 @@ export const simulations = [
       ],
     },
     defaultParams: {
-      datasetType: 'linear', nPoints: 100, noiseLevel: 0.25, seed: 42,
+      datasetType: 'linear', nPoints: 100, noiseLevel: 0.25, seed: 42, testSplit: 0.2,
       learningRate: 0.05, epochs: 200, degree: 1, l2: 0,
     },
     dataParamControls: regDataParams,
@@ -311,7 +315,7 @@ export const simulations = [
     title: 'KNN Regression',
     taskType: 'regression',
     class: KNNRegressionSimulation,
-    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae'],
+    metricKeys: ['loss', 'testLoss', 'mae', 'testMAE', 'rmse', 'mape', 'nmae'],
     info: {
       tagline: 'Lazy instance-based regressor',
       description: 'Predicts the target as the mean of the K nearest training points. No model weights — every prediction scans the full dataset.',
@@ -322,7 +326,7 @@ export const simulations = [
       ],
     },
     defaultParams: {
-      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42,
+      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42, testSplit: 0.2,
       k: 5, distanceMetric: 'euclidean',
     },
     dataParamControls: regDataParams,
@@ -340,7 +344,7 @@ export const simulations = [
     title: 'Random Forest Reg.',
     taskType: 'regression',
     class: RandomForestRegressionSimulation,
-    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae'],
+    metricKeys: ['loss', 'testLoss', 'mae', 'testMAE', 'rmse', 'mape', 'nmae'],
     info: {
       tagline: 'Ensemble of regression trees',
       description: 'Each tree splits training data to minimize MSE. Prediction = mean across all trees. Bootstrap sampling reduces variance without increasing bias.',
@@ -351,7 +355,7 @@ export const simulations = [
       ],
     },
     defaultParams: {
-      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42,
+      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42, testSplit: 0.2,
       nTrees: 20, maxDepth: 4, minLeafSize: 3,
     },
     dataParamControls: regDataParams,
@@ -370,7 +374,7 @@ export const simulations = [
     title: 'SVR',
     taskType: 'regression',
     class: SVRSimulation,
-    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae'],
+    metricKeys: ['loss', 'testLoss', 'mae', 'testMAE', 'rmse', 'mape', 'nmae'],
     info: {
       tagline: 'Epsilon-insensitive tube regressor',
       description: 'Fits a tube of width 2\u03b5 around the data. Points inside the tube incur zero loss. Only points outside (support vectors, shown in yellow) influence the fit.',
@@ -381,7 +385,7 @@ export const simulations = [
       ],
     },
     defaultParams: {
-      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42,
+      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42, testSplit: 0.2,
       C: 1.0, epsilon: 0.1, kernel: 'linear', learningRate: 0.02, epochs: 300,
     },
     dataParamControls: regDataParams,

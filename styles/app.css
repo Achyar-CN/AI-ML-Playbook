@@ -176,6 +176,20 @@ input[type="checkbox"].toggle:checked::before { left: 16px; }
 }
 .metric-card canvas { width: 100%; height: 56px; border-radius: 4px; display: block; }
 
+/* Metric Train/Test toggle tabs */
+.metric-tab-row { display: flex; gap: 4px; margin-bottom: 6px; }
+.metric-tab {
+  flex: 1; padding: 5px 8px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--bg);
+  font-size: .74rem; font-weight: 600; color: var(--text-muted);
+  cursor: pointer; transition: background .15s, color .15s;
+}
+.metric-tab.active {
+  background: var(--primary); color: #fff; border-color: var(--primary);
+}
+.metrics-train-group,
+.metrics-test-group { display: flex; flex-direction: column; gap: 14px; }
+
 /* Task tabs */
 .task-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
 .task-tab {
@@ -237,7 +251,8 @@ input[type="checkbox"].toggle:checked::before { left: 16px; }
 .csv-clear-btn { padding: 4px 10px; font-size: .75rem; background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
 .csv-clear-btn:hover:not(:disabled) { background: #ffedd5; }
 .csv-clear-btn:disabled { opacity: .4; cursor: not-allowed; }
-.csv-format-hint { font-size: .68rem; color: var(--text-muted); margin-top: 5px; }
+.csv-format-hint { font-size: .68rem; color: var(--text-muted); margin-top: 5px; line-height: 1.5; }
+.csv-format-hint b { color: var(--text-secondary); }
 
 /* ── Generic collapsible panel ── */
 .panel-collapse-header {

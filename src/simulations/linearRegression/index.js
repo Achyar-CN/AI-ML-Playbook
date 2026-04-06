@@ -124,20 +124,6 @@ export class LinearRegressionSimulation extends BaseSimulation {
     });
     this.ctx.restore();
 
-    // Residual legend (bottom-right)
-    this.ctx.save();
-    this.ctx.fillStyle = 'rgba(255,255,255,.92)';
-    this.ctx.beginPath(); this.ctx.roundRect(W-162, H-54, 154, 46, 6); this.ctx.fill();
-    this.ctx.strokeStyle = '#e2e8f0'; this.ctx.lineWidth = 1; this.ctx.stroke();
-    this.ctx.font = 'bold 10px sans-serif'; this.ctx.fillStyle = '#374151'; this.ctx.textAlign = 'left';
-    this.ctx.fillText('Residuals', W-150, H-38);
-    [['rgba(29,78,216,.7)', 'y > ŷ (above)'], ['rgba(220,38,38,.7)', 'y < ŷ (below)']].forEach(([color, label], i) => {
-      this.ctx.strokeStyle = color; this.ctx.lineWidth = 2;
-      this.ctx.beginPath(); this.ctx.moveTo(W-150, H-24+i*12); this.ctx.lineTo(W-132, H-24+i*12); this.ctx.stroke();
-      this.ctx.fillStyle = '#475569'; this.ctx.font = '10px sans-serif';
-      this.ctx.fillText(label, W-128, H-20+i*12);
-    });
-    this.ctx.restore();
   }
 
   _r2() {

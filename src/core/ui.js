@@ -1,4 +1,5 @@
-import { dataStore } from './dataStore.js';
+import { dataStore }   from './dataStore.js';
+import { computePCA }  from '../utils/pca.js';
 
 // ── Preset scenarios ──────────────────────────────────────────────
 const CLASS_PRESETS = [
@@ -307,6 +308,12 @@ export class UIController {
       box.appendChild(this._buildSliderField(field, value));
     });
 
+    // ── Show Test Points toggle (only when testSplit > 0) ──────────
+    const testSplitVal = Number(this.stateManager.get('testSplit', (sim.defaultParams || {}).testSplit ?? 0));
+    if (testSplitVal > 0) {
+      box.appendChild(this._buildShowTestToggle());
+    }
+
     // ── CSV import ──────────────────────────────────────────────
     box.appendChild(this._buildCSVImport(sim));
   }
@@ -317,6 +324,45 @@ export class UIController {
     this.simulationManager.updateCurrentParams(params);
     this.renderDataParams(sim); // re-render chips + sliders with new values
     this.setStatus('ready');
+  }
+
+  _buildShowTestToggle() {
+    const sim = this.simulationManager.current;
+    const current = sim?.showTestOverlay !== false; // default true
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'param-field';
+    const row = document.createElement('div');
+    row.className = 'toggle-row';
+
+    const lbl = document.createElement('label');
+    lbl.textContent = 'Show Test Points';
+    lbl.setAttribute('for', 'show-test-toggle');
+
+    const inp = document.createElement('input');
+    inp.id       = 'show-test-toggle';
+    inp.type     = 'checkbox';
+    inp.className = 'toggle';
+    inp.checked  = current;
+
+    inp.addEventListener('change', () => {
+      const s = this.simulationManager.current;
+      if (s) {
+        s.showTestOverlay = inp.checked;
+        s.renderWithOverlays();
+      }
+    });
+
+    row.appendChild(lbl);
+    row.appendChild(inp);
+    wrapper.appendChild(row);
+
+    const desc = document.createElement('p');
+    desc.className = 'param-desc';
+    desc.textContent = 'Show held-out test points (□/◇) on the visualization canvas.';
+    wrapper.appendChild(desc);
+
+    return wrapper;
   }
 
   _buildCSVImport(sim) {
@@ -336,17 +382,31 @@ export class UIController {
       ? 'samples/regression_sample.csv'
       : 'samples/classification_sample.csv';
     sampleLink.download = '';
-    sampleLink.textContent = 'sample';
+    sampleLink.textContent = '2D sample';
 
     header.appendChild(label);
     header.appendChild(sampleLink);
+
+    // Extra 3D sample link for classification
+    if (sim.taskType === 'classification') {
+      const s3d = document.createElement('a');
+      s3d.className  = 'csv-sample-link';
+      s3d.href       = 'samples/classification_3d_sample.csv';
+      s3d.download   = '';
+      s3d.textContent = '3D sample';
+      s3d.style.marginLeft = '6px';
+      header.appendChild(s3d);
+    }
     wrap.appendChild(header);
 
     // Status / filename row
     const status = document.createElement('div');
     status.className = 'csv-status';
     if (dataStore.points && dataStore.type === sim.taskType) {
-      status.textContent = `\u2713 ${dataStore.filename || 'custom data'} (${dataStore.points.length} pts)`;
+      const tag = dataStore.is3D ? ' · 3D'
+        : dataStore.pcaInfo ? ` · PCA(${dataStore.nFeatures}→2)`
+        : '';
+      status.textContent = `✓ ${dataStore.filename || 'custom data'} (${dataStore.points.length} pts${tag})`;
       status.classList.add('loaded');
     } else {
       status.textContent = 'No file loaded';
@@ -379,9 +439,17 @@ export class UIController {
     });
 
     clearBtn.addEventListener('click', () => {
-      dataStore.points   = null;
-      dataStore.type     = null;
-      dataStore.filename = null;
+      dataStore.points       = null;
+      dataStore.type         = null;
+      dataStore.filename     = null;
+      dataStore.featureNames = [];
+      dataStore.targetName   = null;
+      dataStore.nFeatures    = 0;
+      dataStore.xLabel       = null;
+      dataStore.yLabel       = null;
+      dataStore.zLabel       = null;
+      dataStore.is3D         = false;
+      dataStore.pcaInfo      = null;
       this.simulationManager.updateCurrentParams({});
       this.renderDataParams(sim);
     });
@@ -393,9 +461,12 @@ export class UIController {
 
     const fmt = document.createElement('p');
     fmt.className = 'csv-format-hint';
-    fmt.textContent = sim.taskType === 'regression'
-      ? 'Format: x,y  (header row optional)'
-      : 'Format: x1,x2,label  (label = 0 or 1)';
+    if (sim.taskType === 'regression') {
+      fmt.textContent = 'Format: x,y  (header row optional)';
+    } else {
+      fmt.innerHTML = 'Format: <b>f1,f2[,f3,...],label</b><br>'
+        + '2 features → 2D  |  3 features → <b>3D scatter</b>  |  4+ → <b>PCA 2D</b>';
+    }
     wrap.appendChild(fmt);
 
     return wrap;
@@ -408,32 +479,102 @@ export class UIController {
         const rows = e.target.result.trim().split('\n')
           .map(r => r.trim()).filter(r => r.length > 0);
 
-        // Skip header row if first cell is non-numeric
-        const startIdx = isNaN(parseFloat(rows[0].split(',')[0])) ? 1 : 0;
-        const data = rows.slice(startIdx).map(row => row.split(',').map(v => parseFloat(v.trim())));
+        // Detect header: first row is a header if its first cell is non-numeric
+        const hasHeader = isNaN(parseFloat(rows[0].split(',')[0].trim()));
+        const headerRow = hasHeader ? rows[0].split(',').map(c => c.trim()) : null;
+        const dataRows  = rows.slice(hasHeader ? 1 : 0)
+          .map(r => r.split(',').map(v => parseFloat(v.trim())));
+
+        // Helper: normalise an array of values to [-1, 1]
+        const norm1D = (vals) => {
+          const mn = Math.min(...vals), mx = Math.max(...vals);
+          return mx === mn ? vals.map(() => 0) : vals.map(v => 2 * (v - mn) / (mx - mn) - 1);
+        };
+
+        // Reset metadata
+        dataStore.featureNames = [];
+        dataStore.targetName   = null;
+        dataStore.nFeatures    = 0;
+        dataStore.xLabel       = null;
+        dataStore.yLabel       = null;
+        dataStore.zLabel       = null;
+        dataStore.is3D         = false;
+        dataStore.pcaInfo      = null;
 
         if (sim.taskType === 'regression') {
-          const raw = data.filter(r => r.length >= 2 && !isNaN(r[0]) && !isNaN(r[1]));
+          // Regression: exactly 2 columns (1 feature + 1 target)
+          const raw = dataRows.filter(r => r.length >= 2 && !isNaN(r[0]) && !isNaN(r[1]));
           if (!raw.length) throw new Error('No valid rows');
-          const xs = raw.map(r => r[0]), ys = raw.map(r => r[1]);
-          const normalize = (vals) => {
-            const mn = Math.min(...vals), mx = Math.max(...vals);
-            return mx === mn ? vals.map(() => 0) : vals.map(v => 2 * (v - mn) / (mx - mn) - 1);
-          };
-          const nxs = normalize(xs), nys = normalize(ys);
-          dataStore.points   = nxs.map((x, i) => ({ x, y: nys[i] }));
+
+          const fName = headerRow?.[0] ?? 'x';
+          const tName = headerRow?.[1] ?? 'y';
+          dataStore.featureNames = [fName];
+          dataStore.targetName   = tName;
+          dataStore.nFeatures    = 1;
+          dataStore.xLabel       = fName;
+          dataStore.yLabel       = tName;
+
+          const nx = norm1D(raw.map(r => r[0]));
+          const ny = norm1D(raw.map(r => r[1]));
+          dataStore.points   = nx.map((x, i) => ({ x, y: ny[i] }));
           dataStore.type     = 'regression';
           dataStore.filename = file.name;
+
         } else {
-          const raw = data.filter(r => r.length >= 3 && !isNaN(r[0]) && !isNaN(r[1]) && !isNaN(r[2]));
+          // Classification: last column = label, all others = features
+          const nCols = dataRows[0]?.length ?? 0;
+          if (nCols < 2) throw new Error('Need at least 2 columns (1 feature + label)');
+          const nFeat = nCols - 1;
+
+          const raw = dataRows.filter(r =>
+            r.length >= nCols && r.slice(0, nFeat).every(v => !isNaN(v)) && !isNaN(r[nFeat])
+          );
           if (!raw.length) throw new Error('No valid rows');
-          const x1s = raw.map(r => r[0]), x2s = raw.map(r => r[1]);
-          const normalize = (vals) => {
-            const mn = Math.min(...vals), mx = Math.max(...vals);
-            return mx === mn ? vals.map(() => 0) : vals.map(v => 2 * (v - mn) / (mx - mn) - 1);
-          };
-          const nx1 = normalize(x1s), nx2 = normalize(x2s);
-          dataStore.points   = nx1.map((x, i) => ({ x, y: nx2[i], label: raw[i][2] === 1 ? 1 : 0 }));
+
+          // Column names
+          const featNames = headerRow
+            ? headerRow.slice(0, nFeat)
+            : Array.from({ length: nFeat }, (_, i) => `x${i + 1}`);
+          const tName = headerRow?.[nFeat] ?? 'label';
+
+          dataStore.featureNames = featNames;
+          dataStore.targetName   = tName;
+          dataStore.nFeatures    = nFeat;
+
+          const labels = raw.map(r => r[nFeat] === 1 ? 1 : 0);
+
+          if (nFeat === 2) {
+            // ── 2D: direct mapping ──────────────────────────────
+            const nx = norm1D(raw.map(r => r[0]));
+            const ny = norm1D(raw.map(r => r[1]));
+            dataStore.points = nx.map((x, i) => ({ x, y: ny[i], label: labels[i] }));
+            dataStore.xLabel = featNames[0];
+            dataStore.yLabel = featNames[1];
+            dataStore.is3D   = false;
+
+          } else if (nFeat === 3) {
+            // ── 3D: three-feature scatter ───────────────────────
+            const nx = norm1D(raw.map(r => r[0]));
+            const ny = norm1D(raw.map(r => r[1]));
+            const nz = norm1D(raw.map(r => r[2]));
+            dataStore.points = nx.map((x, i) => ({ x, y: ny[i], z: nz[i], label: labels[i] }));
+            dataStore.xLabel = featNames[0];
+            dataStore.yLabel = featNames[1];
+            dataStore.zLabel = featNames[2];
+            dataStore.is3D   = true;
+
+          } else {
+            // ── >3 features: PCA → 2D ───────────────────────────
+            const X = raw.map(r => r.slice(0, nFeat));
+            const { projected, varExplained } = computePCA(X);
+            const pct = varExplained.map(v => `${(v * 100).toFixed(0)}%`);
+            dataStore.points   = projected.map(([x, y], i) => ({ x, y, label: labels[i] }));
+            dataStore.xLabel   = `PC1 (${pct[0]})`;
+            dataStore.yLabel   = `PC2 (${pct[1]})`;
+            dataStore.pcaInfo  = { varExplained };
+            dataStore.is3D     = false;
+          }
+
           dataStore.type     = 'classification';
           dataStore.filename = file.name;
         }
@@ -441,8 +582,8 @@ export class UIController {
         this.simulationManager.updateCurrentParams({});
         this.renderDataParams(sim);
         this.setStatus('ready');
-      } catch {
-        alert('CSV parse error. Check the format hint below the import button.');
+      } catch (err) {
+        alert(`CSV parse error: ${err.message}. Check the format hint below.`);
       }
     };
     reader.readAsText(file);
@@ -577,20 +718,31 @@ export class UIController {
     this.stateManager.setState({ [name]: value });
     this.renderMetrics([]);
     this._updateEpoch([]);
+    // Re-render data params when testSplit changes so toggle appears/disappears
+    if (name === 'testSplit') {
+      const meta = this.simulationManager.currentMeta;
+      if (meta) this.renderDataParams(meta);
+    }
   }
 
   // ── Metrics ──────────────────────────────────────────────────
   // Concise descriptions + business impact for each metric
   static METRIC_INFO = {
-    loss:      { label: 'Loss',      desc: 'Error the model minimizes during training.',       impact: 'Lower = better fit. Plateau = converged.' },
-    accuracy:  { label: 'Accuracy',  desc: 'Fraction of correctly classified samples.',        impact: 'Best with balanced classes. 90%+ is typically production-ready.' },
-    recall:    { label: 'Recall',    desc: 'True positives / (True pos + False neg).',          impact: 'Critical when missing a positive is costly (e.g. disease detection).' },
-    precision: { label: 'Precision', desc: 'True positives / (True pos + False pos).',          impact: 'Critical when false alarms are costly (e.g. spam filters, fraud).' },
-    f1:        { label: 'F1',        desc: 'Harmonic mean of Precision and Recall.',            impact: 'Best single metric for imbalanced datasets.' },
-    mae:       { label: 'MAE',       desc: 'Mean Absolute Error — avg magnitude of errors.',   impact: 'Interpretable in same units as target. Robust to outliers.' },
-    rmse:      { label: 'RMSE',      desc: 'Root Mean Squared Error — penalizes large errors.', impact: 'Sensitive to outliers. Use when large errors are especially bad.' },
-    mape:      { label: 'MAPE',      desc: 'Mean Absolute Percentage Error.',                   impact: 'Scale-independent. Useful for comparing across different datasets.' },
-    nmae:      { label: 'NMAE',      desc: 'Normalized MAE relative to mean target value.',    impact: 'Allows comparison when target scale varies across runs.' },
+    // ── Train metrics ──────────────────────────────────────────────
+    loss:         { label: 'Loss (Train)',      desc: 'Error minimised on training data.',                     impact: 'Lower = better fit. Plateau = converged.' },
+    accuracy:     { label: 'Accuracy (Train)',  desc: 'Fraction correctly classified on training set.',        impact: 'High train + low test accuracy = overfitting.' },
+    recall:       { label: 'Recall',            desc: 'True positives / (True pos + False neg).',              impact: 'Critical when missing positives is costly (e.g. disease detection).' },
+    precision:    { label: 'Precision',         desc: 'True positives / (True pos + False pos).',              impact: 'Critical when false alarms are costly (spam, fraud).' },
+    f1:           { label: 'F1 (Train)',        desc: 'Harmonic mean of Precision and Recall on train set.',   impact: 'Best single metric for imbalanced datasets.' },
+    mae:          { label: 'MAE (Train)',       desc: 'Mean Absolute Error on training data.',                 impact: 'Interpretable in same units as target. Robust to outliers.' },
+    rmse:         { label: 'RMSE',              desc: 'Root Mean Squared Error — penalises large errors.',     impact: 'Sensitive to outliers. Use when large errors are especially bad.' },
+    mape:         { label: 'MAPE',              desc: 'Mean Absolute Percentage Error.',                       impact: 'Scale-independent. Compare across datasets.' },
+    nmae:         { label: 'NMAE',              desc: 'Normalised MAE relative to mean target value.',         impact: 'Allows comparison when target scale varies.' },
+    // ── Test metrics (only populated when testSplit > 0) ───────────
+    testLoss:     { label: 'Loss (Test)',       desc: 'Error on held-out test set.',                           impact: 'Gap vs train loss shows overfitting. High gap = bad generalisation.' },
+    testAccuracy: { label: 'Accuracy (Test)',   desc: 'Fraction correctly classified on test set.',            impact: 'Most reliable accuracy estimate. Aim to match train accuracy.' },
+    testF1:       { label: 'F1 (Test)',         desc: 'F1 score on held-out test set.',                        impact: 'Reliable F1 for imbalanced data. Compare to train F1 for overfit.' },
+    testMAE:      { label: 'MAE (Test)',        desc: 'Mean Absolute Error on held-out test set.',             impact: 'Generalisation quality. Large gap vs train MAE = overfitting.' },
   };
 
   setupMetrics(sim) {
@@ -598,34 +750,56 @@ export class UIController {
     if (!this.metricsContainer) return;
     this.metricsContainer.innerHTML = '';
 
-    this.metricKeys.forEach(key => {
-      const info = UIController.METRIC_INFO[key] || { label: key.toUpperCase(), desc: '', impact: '' };
+    const allKeys    = this.metricKeys;
+    const trainKeys  = allKeys.filter(k => !k.startsWith('test'));
+    const testKeys   = allKeys.filter(k => k.startsWith('test'));
+    const hasTest    = testKeys.length > 0;
 
+    // ── Train/Test toggle (only when test keys exist) ─────────────
+    if (hasTest) {
+      const tabRow = document.createElement('div');
+      tabRow.className = 'metric-tab-row';
+
+      ['train', 'test'].forEach(mode => {
+        const btn = document.createElement('button');
+        btn.className  = `metric-tab${mode === 'train' ? ' active' : ''}`;
+        btn.dataset.mode = mode;
+        btn.textContent = mode === 'train' ? 'Train' : 'Test';
+        btn.addEventListener('click', () => {
+          tabRow.querySelectorAll('.metric-tab').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const trainGroup = this.metricsContainer.querySelector('.metrics-train-group');
+          const testGroup  = this.metricsContainer.querySelector('.metrics-test-group');
+          if (trainGroup) trainGroup.style.display = mode === 'train' ? '' : 'none';
+          if (testGroup)  testGroup.style.display  = mode === 'test'  ? '' : 'none';
+        });
+        tabRow.appendChild(btn);
+      });
+      this.metricsContainer.appendChild(tabRow);
+    }
+
+    // ── Build a card for a single metric key ──────────────────────
+    const buildCard = (key) => {
+      const info = UIController.METRIC_INFO[key] || { label: key.toUpperCase(), desc: '', impact: '' };
       const card = document.createElement('div');
       card.className = 'metric-card';
 
-      // Header: name + last value
       const header = document.createElement('div');
       header.className = 'metric-card-header';
-
       const nameWrap = document.createElement('div');
       nameWrap.className = 'metric-name-wrap';
-
       const name = document.createElement('span');
       name.className = 'metric-name';
       name.textContent = info.label.toUpperCase();
       nameWrap.appendChild(name);
-
       const lastVal = document.createElement('span');
       lastVal.className = 'metric-last-value';
       lastVal.setAttribute('data-metric-val', key);
       lastVal.textContent = '—';
-
       header.appendChild(nameWrap);
       header.appendChild(lastVal);
       card.appendChild(header);
 
-      // Description + business impact
       if (info.desc) {
         const descWrap = document.createElement('div');
         descWrap.className = 'metric-desc';
@@ -639,9 +813,23 @@ export class UIController {
       canvas.width  = 500;
       canvas.height = 120;
       card.appendChild(canvas);
+      return card;
+    };
 
-      this.metricsContainer.appendChild(card);
-    });
+    // ── Train group ───────────────────────────────────────────────
+    const trainGroup = document.createElement('div');
+    trainGroup.className = 'metrics-train-group';
+    trainKeys.forEach(key => trainGroup.appendChild(buildCard(key)));
+    this.metricsContainer.appendChild(trainGroup);
+
+    // ── Test group (hidden by default) ────────────────────────────
+    if (hasTest) {
+      const testGroup = document.createElement('div');
+      testGroup.className = 'metrics-test-group';
+      testGroup.style.display = 'none';
+      testKeys.forEach(key => testGroup.appendChild(buildCard(key)));
+      this.metricsContainer.appendChild(testGroup);
+    }
   }
 
   renderMetrics(history) {
@@ -676,15 +864,16 @@ export class UIController {
 
       const values = history.map(item => item[key] !== undefined ? item[key] : 0);
       const latest = values[values.length - 1];
-      const isAcc  = ['accuracy', 'f1', 'recall', 'precision'].includes(key);
+      const isAcc  = ['accuracy', 'f1', 'recall', 'precision', 'testAccuracy', 'testF1'].includes(key);
       const isMape = key === 'mape';
+      const isLoss = key === 'loss' || key === 'testLoss';
 
       if (valSpan) {
         const disp = isAcc ? `${(latest * 100).toFixed(1)}%`
           : isMape ? `${latest.toFixed(1)}%`
           : latest.toFixed(4);
         valSpan.textContent = disp;
-        valSpan.style.color = key === 'loss' ? '#dc2626' : '#1d4ed8';
+        valSpan.style.color = isLoss ? '#dc2626' : '#1d4ed8';
       }
 
       const maxY   = Math.max(...values, 1e-6);
@@ -704,8 +893,8 @@ export class UIController {
       ctx.fillText('Epoch', W / 2, H - 4);
 
       const n = values.length;
-      const lineColor = key === 'loss' ? '#dc2626' : '#1d4ed8';
-      const areaColor = key === 'loss' ? 'rgba(220,38,38,.08)' : 'rgba(29,78,216,.08)';
+      const lineColor = isLoss ? '#dc2626' : '#1d4ed8';
+      const areaColor = isLoss ? 'rgba(220,38,38,.08)' : 'rgba(29,78,216,.08)';
 
       ctx.beginPath();
       ctx.moveTo(pad.l, pad.t + chartH);
