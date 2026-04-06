@@ -172,3 +172,105 @@ export class DecisionTreeSimulation extends BaseSimulation {
     return this.computeClassificationMetrics(labels, preds);
   }
 }
+
+// ── Decision Tree Regression ──────────────────────────────────────
+export class DecisionTreeRegressionSimulation extends BaseSimulation {
+  setup() {
+    this.history = [];
+    this.epoch   = 0;
+    this.tree    = null;
+    const { nPoints, seed, noiseLevel, datasetType } = this.params;
+    this.points = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
+  }
+
+  _mse(data) {
+    if (!data.length) return 0;
+    const m = data.reduce((s, pt) => s + pt.y, 0) / data.length;
+    return data.reduce((s, pt) => s + (pt.y - m) ** 2, 0) / data.length;
+  }
+
+  _buildNode(data, depth, maxDepth, minLeaf) {
+    if (!data.length) return { value: 0 };
+    const meanY = data.reduce((s, pt) => s + pt.y, 0) / data.length;
+    if (depth >= maxDepth || data.length < minLeaf) return { value: meanY };
+    const pMse = this._mse(data);
+    let bestGain = 1e-10, bestSplit = null;
+    const vals = [...new Set(data.map(pt => pt.x))].sort((a, b) => a - b);
+    for (let i = 0; i < vals.length - 1; i++) {
+      const t = (vals[i] + vals[i + 1]) / 2;
+      const L = data.filter(pt => pt.x <= t), R = data.filter(pt => pt.x > t);
+      if (!L.length || !R.length) continue;
+      const wMse = (L.length * this._mse(L) + R.length * this._mse(R)) / data.length;
+      const gain = pMse - wMse;
+      if (gain > bestGain) { bestGain = gain; bestSplit = { t, L, R }; }
+    }
+    if (!bestSplit) return { value: meanY };
+    return {
+      threshold: bestSplit.t,
+      left:  this._buildNode(bestSplit.L, depth + 1, maxDepth, minLeaf),
+      right: this._buildNode(bestSplit.R, depth + 1, maxDepth, minLeaf),
+    };
+  }
+
+  _predictNode(node, x) {
+    if (node.value !== undefined) return node.value;
+    return x <= node.threshold ? this._predictNode(node.left, x) : this._predictNode(node.right, x);
+  }
+
+  predict(x) { return this.tree ? this._predictNode(this.tree, x) : 0; }
+
+  step() {
+    const maxDepth = this.params.maxDepth || 5;
+    if (this.epoch >= maxDepth) return;
+    this.epoch++;
+    this.tree = this._buildNode(this.points, 0, this.epoch, this.params.minLeafSize || 3);
+    this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
+  }
+
+  computeMetrics() {
+    return this.computeRegressionMetrics(this.points.map(pt => pt.y), this.points.map(pt => this.predict(pt.x)));
+  }
+
+  render() {
+    const { width: W, height: H } = this.canvas;
+    const PAD = 36;
+    this.ctx.clearRect(0, 0, W, H);
+    this.ctx.fillStyle = '#fff'; this.ctx.fillRect(0, 0, W, H);
+    const toX = x => PAD + ((x + 1) / 2) * (W - 2 * PAD);
+    const toY = y => H - PAD - ((y + 1.2) / 2.4) * (H - 2 * PAD);
+    const clamp = y => Math.max(-1.2, Math.min(1.2, y));
+
+    this.ctx.strokeStyle = '#e2e8f0'; this.ctx.lineWidth = 1;
+    this.ctx.beginPath(); this.ctx.moveTo(PAD, toY(0)); this.ctx.lineTo(W - PAD, toY(0)); this.ctx.stroke();
+    this.ctx.beginPath(); this.ctx.moveTo(toX(0), PAD); this.ctx.lineTo(toX(0), H - PAD); this.ctx.stroke();
+
+    if (this.tree) {
+      this.ctx.beginPath(); this.ctx.strokeStyle = '#dc2626'; this.ctx.lineWidth = 2.5;
+      for (let i = 0; i <= 400; i++) {
+        const x = -1 + (i / 400) * 2, y = clamp(this.predict(x));
+        i === 0 ? this.ctx.moveTo(toX(x), toY(y)) : this.ctx.lineTo(toX(x), toY(y));
+      }
+      this.ctx.stroke();
+    }
+
+    this.points.forEach(({ x, y }) => {
+      this.ctx.beginPath(); this.ctx.arc(toX(x), toY(clamp(y)), 3.5, 0, Math.PI * 2);
+      this.ctx.fillStyle = '#64748b'; this.ctx.fill();
+      this.ctx.strokeStyle = '#fff'; this.ctx.lineWidth = 1; this.ctx.stroke();
+    });
+
+    const m = this.tree ? this.computeMetrics() : null;
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(255,255,255,.93)';
+    this.ctx.beginPath(); this.ctx.roundRect(8, 8, 270, 70, 6); this.ctx.fill();
+    this.ctx.strokeStyle = '#e2e8f0'; this.ctx.lineWidth = 1; this.ctx.stroke();
+    [`Depth: ${this.epoch} / ${this.params.maxDepth || 5}  |  Min Leaf: ${this.params.minLeafSize || 3}`,
+     m ? `MAE: ${m.mae.toFixed(3)}  RMSE: ${m.rmse.toFixed(3)}` : 'Press Run to build tree',
+    ].forEach((line, i) => {
+      this.ctx.font = i === 0 ? 'bold 12px sans-serif' : '11px sans-serif';
+      this.ctx.fillStyle = i === 0 ? '#1e293b' : '#374151';
+      this.ctx.textAlign = 'left'; this.ctx.fillText(line, 18, 26 + i * 17);
+    });
+    this.ctx.restore();
+  }
+}

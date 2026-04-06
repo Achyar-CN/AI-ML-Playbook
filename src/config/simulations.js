@@ -1,14 +1,21 @@
 import { PerceptronSimulation }              from '../simulations/perceptron/index.js';
-import { NNSimulation }                      from '../simulations/nn/index.js';
+import { NNSimulation,
+         NNRegressionSimulation }            from '../simulations/nn/index.js';
 import { LinearRegressionSimulation }        from '../simulations/linearRegression/index.js';
-import { DecisionTreeSimulation }            from '../simulations/decisionTree/index.js';
-import { AdaBoostSimulation }               from '../simulations/adaboost/index.js';
+import { DecisionTreeSimulation,
+         DecisionTreeRegressionSimulation }  from '../simulations/decisionTree/index.js';
+import { AdaBoostSimulation,
+         GradientBoostingRegressionSimulation } from '../simulations/adaboost/index.js';
 import { KNNClassificationSimulation,
          KNNRegressionSimulation }           from '../simulations/knn/index.js';
 import { RandomForestClassificationSimulation,
          RandomForestRegressionSimulation }  from '../simulations/randomForest/index.js';
 import { SVMClassificationSimulation,
          SVRSimulation }                     from '../simulations/svm/index.js';
+import { XGBoostClassificationSimulation,
+         XGBoostRegressionSimulation }       from '../simulations/xgboost/index.js';
+import { LightGBMClassificationSimulation,
+         LightGBMRegressionSimulation }      from '../simulations/lgbm/index.js';
 
 const CLASS_DATASETS = [
   { id: 'linear',       label: 'Linear' },
@@ -59,7 +66,7 @@ export const simulations = [
     title: 'Perceptron',
     taskType: 'classification',
     class: PerceptronSimulation,
-    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
+    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1', 'testLoss', 'testAccuracy', 'testRecall', 'testPrecision', 'testF1'],
     info: {
       tagline: 'Linear binary classifier',
       description: 'The simplest learning unit. Iterates through training data and nudges weights whenever a point is misclassified using the perceptron update rule.',
@@ -90,7 +97,7 @@ export const simulations = [
     title: 'Neural Network',
     taskType: 'classification',
     class: NNSimulation,
-    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
+    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1', 'testLoss', 'testAccuracy', 'testRecall', 'testPrecision', 'testF1'],
     info: {
       tagline: 'Universal function approximator',
       description: 'Stacked layers of nonlinear units trained via backpropagation (chain rule). Can learn arbitrarily complex decision boundaries given enough capacity.',
@@ -125,7 +132,7 @@ export const simulations = [
     title: 'Decision Tree',
     taskType: 'classification',
     class: DecisionTreeSimulation,
-    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
+    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1', 'testLoss', 'testAccuracy', 'testRecall', 'testPrecision', 'testF1'],
     info: {
       tagline: 'Recursive partition learner',
       description: 'Greedily splits feature space by finding thresholds that maximize class purity. Each Run epoch grows the tree one level deeper.',
@@ -155,7 +162,7 @@ export const simulations = [
     title: 'AdaBoost',
     taskType: 'classification',
     class: AdaBoostSimulation,
-    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
+    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1', 'testLoss', 'testAccuracy', 'testRecall', 'testPrecision', 'testF1'],
     info: {
       tagline: 'Boosting ensemble of decision stumps',
       description: 'Trains weak learners (depth-1 trees) sequentially. Each round re-weights data so the next stump focuses harder on previously misclassified points.',
@@ -186,7 +193,7 @@ export const simulations = [
     title: 'K-Nearest Neighbors',
     taskType: 'classification',
     class: KNNClassificationSimulation,
-    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
+    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1', 'testLoss', 'testAccuracy', 'testRecall', 'testPrecision', 'testF1'],
     info: {
       tagline: 'Lazy instance-based learner',
       description: 'No training phase — classifies each point by majority vote among its K nearest neighbors. The decision boundary adapts to the data density.',
@@ -215,7 +222,7 @@ export const simulations = [
     title: 'Random Forest',
     taskType: 'classification',
     class: RandomForestClassificationSimulation,
-    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
+    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1', 'testLoss', 'testAccuracy', 'testRecall', 'testPrecision', 'testF1'],
     info: {
       tagline: 'Bagging ensemble of random trees',
       description: 'Builds many decision trees on bootstrap samples, each node splitting on a randomly chosen feature. Final prediction = majority vote across all trees.',
@@ -245,7 +252,7 @@ export const simulations = [
     title: 'SVM',
     taskType: 'classification',
     class: SVMClassificationSimulation,
-    metricKeys: ['loss', 'testLoss', 'accuracy', 'testAccuracy', 'recall', 'precision', 'f1', 'testF1'],
+    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1', 'testLoss', 'testAccuracy', 'testRecall', 'testPrecision', 'testF1'],
     info: {
       tagline: 'Maximum-margin hyperplane classifier',
       description: 'Finds the decision boundary that maximizes the margin between classes. Soft-margin SVM allows some misclassifications controlled by C. Yellow-ringed points are support vectors.',
@@ -277,13 +284,81 @@ export const simulations = [
     ],
   },
 
+  {
+    id: 'xgboostClass',
+    title: 'XGBoost',
+    taskType: 'classification',
+    class: XGBoostClassificationSimulation,
+    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1', 'testLoss', 'testAccuracy', 'testRecall', 'testPrecision', 'testF1'],
+    info: {
+      tagline: 'Second-order gradient boosting trees',
+      description: 'Builds trees sequentially by fitting second-order Taylor approximations of the loss. Uses both gradient (g) and hessian (h) at each leaf to compute optimal leaf values and split gains.',
+      insights: [
+        'λ (L2 leaf regularization) prevents large leaf values — increase to reduce overfitting',
+        'γ (min gain threshold) prunes splits that contribute little — raise for sparser trees',
+        'Lower learning rate with more rounds usually beats fewer rounds with high LR',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'moons', nPoints: 150, noiseLevel: 0.08, seed: 42, testSplit: 0.2,
+      nRounds: 20, learningRate: 0.3, maxDepth: 3, minLeafSize: 2, lambda: 1, gamma: 0,
+    },
+    dataParamControls: classDataParams(CLASS_DATASETS, 'moons'),
+    paramControls: [
+      { name: 'nRounds', label: 'Boosting Rounds', type: 'number', min: 1, max: 60, step: 1,
+        description: 'Number of trees in the ensemble. Each Run step adds one tree.' },
+      { name: 'learningRate', label: 'Learning Rate (η)', type: 'number', min: 0.01, max: 1, step: 0.01,
+        description: 'Scales each tree\'s contribution. Lower = more rounds needed but better generalization.' },
+      { name: 'maxDepth', label: 'Max Depth', type: 'number', min: 1, max: 8, step: 1,
+        description: 'Max depth of each boosting tree. Deeper = more complex splits per round.' },
+      { name: 'lambda', label: 'λ (L2 Leaf Reg)', type: 'number', min: 0, max: 10, step: 0.5,
+        description: 'L2 regularization on leaf values. Higher = smaller leaves, more regularized model.' },
+      { name: 'gamma', label: 'γ (Min Gain)', type: 'number', min: 0, max: 5, step: 0.1,
+        description: 'Minimum gain required to make a split. Prunes low-quality splits.' },
+    ],
+  },
+
+  {
+    id: 'lgbmClass',
+    title: 'LightGBM',
+    taskType: 'classification',
+    class: LightGBMClassificationSimulation,
+    metricKeys: ['loss', 'accuracy', 'recall', 'precision', 'f1', 'testLoss', 'testAccuracy', 'testRecall', 'testPrecision', 'testF1'],
+    info: {
+      tagline: 'Leaf-wise histogram boosting',
+      description: 'Grows trees leaf-wise (best-first) rather than level-wise. Each round finds the single leaf with the highest gain and splits it, enabling deeper specialization with fewer nodes.',
+      insights: [
+        'Leaf-wise growth can overfit more easily — control with Max Leaves and λ',
+        'Histogram binning (32 bins) approximates exact splits for speed',
+        'More leaves per tree can match complex boundaries faster than XGBoost\'s level-wise approach',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'spiral', nPoints: 150, noiseLevel: 0.08, seed: 42, testSplit: 0.2,
+      nRounds: 30, learningRate: 0.1, maxLeaves: 8, lambda: 1, gamma: 0,
+    },
+    dataParamControls: classDataParams(CLASS_DATASETS, 'spiral'),
+    paramControls: [
+      { name: 'nRounds', label: 'Boosting Rounds', type: 'number', min: 1, max: 80, step: 1,
+        description: 'Number of trees (leaf-wise). Each Run step adds one tree.' },
+      { name: 'learningRate', label: 'Learning Rate (η)', type: 'number', min: 0.01, max: 1, step: 0.01,
+        description: 'Scales each tree\'s contribution. LightGBM often uses smaller LR than XGBoost.' },
+      { name: 'maxLeaves', label: 'Max Leaves', type: 'number', min: 2, max: 32, step: 1,
+        description: 'Max leaves per tree. Controls model complexity — replaces max depth.' },
+      { name: 'lambda', label: 'λ (L2 Leaf Reg)', type: 'number', min: 0, max: 10, step: 0.5,
+        description: 'L2 regularization on leaf values. Reduces overfitting from leaf-wise growth.' },
+      { name: 'gamma', label: 'γ (Min Gain)', type: 'number', min: 0, max: 5, step: 0.1,
+        description: 'Minimum gain to accept a split. Prunes weak splits.' },
+    ],
+  },
+
   // ── Regression ───────────────────────────────────────────────
   {
     id: 'linearRegression',
     title: 'Linear / Poly Regression',
     taskType: 'regression',
     class: LinearRegressionSimulation,
-    metricKeys: ['loss', 'testLoss', 'mae', 'testMAE', 'rmse', 'mape', 'nmae'],
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae', 'testLoss', 'testMAE', 'testRMSE', 'testMAPE', 'testNMAE'],
     info: {
       tagline: 'Gradient descent curve fitter',
       description: 'Minimizes Mean Squared Error by repeatedly adjusting weights opposite to the loss gradient. Polynomial features allow fitting nonlinear curves.',
@@ -315,7 +390,7 @@ export const simulations = [
     title: 'KNN Regression',
     taskType: 'regression',
     class: KNNRegressionSimulation,
-    metricKeys: ['loss', 'testLoss', 'mae', 'testMAE', 'rmse', 'mape', 'nmae'],
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae', 'testLoss', 'testMAE', 'testRMSE', 'testMAPE', 'testNMAE'],
     info: {
       tagline: 'Lazy instance-based regressor',
       description: 'Predicts the target as the mean of the K nearest training points. No model weights — every prediction scans the full dataset.',
@@ -344,7 +419,7 @@ export const simulations = [
     title: 'Random Forest Reg.',
     taskType: 'regression',
     class: RandomForestRegressionSimulation,
-    metricKeys: ['loss', 'testLoss', 'mae', 'testMAE', 'rmse', 'mape', 'nmae'],
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae', 'testLoss', 'testMAE', 'testRMSE', 'testMAPE', 'testNMAE'],
     info: {
       tagline: 'Ensemble of regression trees',
       description: 'Each tree splits training data to minimize MSE. Prediction = mean across all trees. Bootstrap sampling reduces variance without increasing bias.',
@@ -374,7 +449,7 @@ export const simulations = [
     title: 'SVR',
     taskType: 'regression',
     class: SVRSimulation,
-    metricKeys: ['loss', 'testLoss', 'mae', 'testMAE', 'rmse', 'mape', 'nmae'],
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae', 'testLoss', 'testMAE', 'testRMSE', 'testMAPE', 'testNMAE'],
     info: {
       tagline: 'Epsilon-insensitive tube regressor',
       description: 'Fits a tube of width 2\u03b5 around the data. Points inside the tube incur zero loss. Only points outside (support vectors, shown in yellow) influence the fit.',
@@ -401,6 +476,165 @@ export const simulations = [
         description: 'Gradient descent step size.' },
       { name: 'epochs', label: 'Epochs', type: 'number', min: 50, max: 1000, step: 50,
         description: 'Gradient descent iterations.' },
+    ],
+  },
+
+  {
+    id: 'decisionTreeReg',
+    title: 'Decision Tree Reg.',
+    taskType: 'regression',
+    class: DecisionTreeRegressionSimulation,
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae', 'testLoss', 'testMAE', 'testRMSE', 'testMAPE', 'testNMAE'],
+    info: {
+      tagline: 'Recursive MSE-minimizing tree',
+      description: 'Splits the feature axis greedily to minimize Mean Squared Error at each node. Each Run epoch grows the tree one level deeper, creating a step-function approximation.',
+      insights: [
+        'Depth 1 = one split (two constant regions)',
+        'Increasing depth captures finer local patterns but risks overfitting',
+        'Predictions are piecewise constant — visible as a step function',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42, testSplit: 0.2,
+      maxDepth: 5, minLeafSize: 3,
+    },
+    dataParamControls: regDataParams,
+    paramControls: [
+      { name: 'maxDepth', label: 'Max Depth', type: 'number', min: 1, max: 10, step: 1,
+        description: 'Max recursive split levels. Each Run step adds one level.' },
+      { name: 'minLeafSize', label: 'Min Leaf Size', type: 'number', min: 2, max: 30, step: 1,
+        description: 'Minimum samples required to split a node.' },
+    ],
+  },
+
+  {
+    id: 'nnRegression',
+    title: 'Neural Network Reg.',
+    taskType: 'regression',
+    class: NNRegressionSimulation,
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae', 'testLoss', 'testMAE', 'testRMSE', 'testMAPE', 'testNMAE'],
+    info: {
+      tagline: 'MLP with linear output for regression',
+      description: 'A single hidden layer network with a linear output neuron trained via MSE backpropagation. Can approximate any smooth continuous function given enough hidden units.',
+      insights: [
+        'More hidden units = smoother, more flexible curves',
+        'ReLU often trains faster; Tanh gives smoother fits on periodic data',
+        'Overfitting shows as extreme curvature — add L2 to regularize',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42, testSplit: 0.2,
+      learningRate: 0.01, epochs: 500, hiddenUnits: 8, activation: 'tanh', l2: 0,
+    },
+    dataParamControls: regDataParams,
+    paramControls: [
+      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.001, max: 0.2, step: 0.001,
+        description: 'Gradient descent step size.' },
+      { name: 'epochs', label: 'Epochs', type: 'number', min: 10, max: 2000, step: 10,
+        description: 'Training iterations over all data.' },
+      { name: 'hiddenUnits', label: 'Hidden Units', type: 'number', min: 1, max: 32, step: 1,
+        description: 'Neurons in the hidden layer. More = more flexible fit.' },
+      { name: 'activation', label: 'Activation', type: 'select',
+        options: [{value:'tanh',label:'Tanh'},{value:'relu',label:'ReLU'},{value:'sigmoid',label:'Sigmoid'}],
+        description: 'Hidden layer nonlinearity.' },
+      { name: 'l2', label: 'L2 Regularization', type: 'number', min: 0, max: 0.1, step: 0.002,
+        description: 'Weight decay to prevent overfitting.' },
+    ],
+  },
+
+  {
+    id: 'gradientBoostingReg',
+    title: 'Gradient Boosting Reg.',
+    taskType: 'regression',
+    class: GradientBoostingRegressionSimulation,
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae', 'testLoss', 'testMAE', 'testRMSE', 'testMAPE', 'testNMAE'],
+    info: {
+      tagline: 'Sequential residual-fitting stumps',
+      description: 'Fits decision stumps (depth-1 trees) sequentially to the residuals of the current prediction. Each round nudges the prediction curve toward the target.',
+      insights: [
+        'More rounds = finer fit, but risks overfitting without shrinkage',
+        'Lower learning rate acts as shrinkage — usually improves generalization',
+        'Orange dashed lines show each stump\'s split threshold',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42, testSplit: 0.2,
+      epochs: 30, learningRate: 0.1,
+    },
+    dataParamControls: regDataParams,
+    paramControls: [
+      { name: 'epochs', label: 'Boosting Rounds', type: 'number', min: 1, max: 100, step: 1,
+        description: 'Number of sequential stumps. More rounds = finer fit.' },
+      { name: 'learningRate', label: 'Learning Rate', type: 'number', min: 0.01, max: 1, step: 0.01,
+        description: 'Shrinkage factor on each stump.' },
+    ],
+  },
+
+  {
+    id: 'xgboostReg',
+    title: 'XGBoost Reg.',
+    taskType: 'regression',
+    class: XGBoostRegressionSimulation,
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae', 'testLoss', 'testMAE', 'testRMSE', 'testMAPE', 'testNMAE'],
+    info: {
+      tagline: 'Second-order boosting for regression',
+      description: 'Applies XGBoost\'s exact second-order split gain formula to MSE regression. Hessian h=1 for all points (MSE), so splits are driven purely by gradient magnitude.',
+      insights: [
+        'Higher λ smooths the curve by penalizing large leaf values',
+        'γ prunes low-gain splits — useful to avoid fitting noise',
+        'Deeper trees per round with fewer rounds often matches more stumps',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42, testSplit: 0.2,
+      nRounds: 20, learningRate: 0.3, maxDepth: 3, minLeafSize: 2, lambda: 1, gamma: 0,
+    },
+    dataParamControls: regDataParams,
+    paramControls: [
+      { name: 'nRounds', label: 'Boosting Rounds', type: 'number', min: 1, max: 60, step: 1,
+        description: 'Number of trees. Each Run step adds one tree.' },
+      { name: 'learningRate', label: 'Learning Rate (η)', type: 'number', min: 0.01, max: 1, step: 0.01,
+        description: 'Scales each tree\'s prediction contribution.' },
+      { name: 'maxDepth', label: 'Max Depth', type: 'number', min: 1, max: 8, step: 1,
+        description: 'Max depth of each regression tree.' },
+      { name: 'lambda', label: 'λ (L2 Leaf Reg)', type: 'number', min: 0, max: 10, step: 0.5,
+        description: 'L2 regularization on leaf values.' },
+      { name: 'gamma', label: 'γ (Min Gain)', type: 'number', min: 0, max: 5, step: 0.1,
+        description: 'Minimum gain to accept a split.' },
+    ],
+  },
+
+  {
+    id: 'lgbmReg',
+    title: 'LightGBM Reg.',
+    taskType: 'regression',
+    class: LightGBMRegressionSimulation,
+    metricKeys: ['loss', 'mae', 'rmse', 'mape', 'nmae', 'testLoss', 'testMAE', 'testRMSE', 'testMAPE', 'testNMAE'],
+    info: {
+      tagline: 'Leaf-wise histogram boosting for regression',
+      description: 'Uses histogram-based approximate splits and leaf-wise (best-first) tree growth for regression. Grows the highest-gain leaf each step rather than all leaves at the same depth.',
+      insights: [
+        'Leaf-wise growth converges faster but can overfit — tune Max Leaves and λ',
+        'Histogram binning (32 bins) approximates exact splits efficiently',
+        'Works well on complex nonlinear patterns with many data points',
+      ],
+    },
+    defaultParams: {
+      datasetType: 'sine', nPoints: 100, noiseLevel: 0.2, seed: 42, testSplit: 0.2,
+      nRounds: 30, learningRate: 0.1, maxLeaves: 8, lambda: 1, gamma: 0,
+    },
+    dataParamControls: regDataParams,
+    paramControls: [
+      { name: 'nRounds', label: 'Boosting Rounds', type: 'number', min: 1, max: 80, step: 1,
+        description: 'Number of leaf-wise trees.' },
+      { name: 'learningRate', label: 'Learning Rate (η)', type: 'number', min: 0.01, max: 1, step: 0.01,
+        description: 'Contribution scale per tree.' },
+      { name: 'maxLeaves', label: 'Max Leaves', type: 'number', min: 2, max: 32, step: 1,
+        description: 'Max leaves per tree. Primary complexity control in LightGBM.' },
+      { name: 'lambda', label: 'λ (L2 Leaf Reg)', type: 'number', min: 0, max: 10, step: 0.5,
+        description: 'L2 regularization on leaf values.' },
+      { name: 'gamma', label: 'γ (Min Gain)', type: 'number', min: 0, max: 5, step: 0.1,
+        description: 'Minimum gain threshold to accept a split.' },
     ],
   },
 ];

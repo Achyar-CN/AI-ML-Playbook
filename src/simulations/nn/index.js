@@ -194,3 +194,102 @@ export class NNSimulation extends BaseSimulation {
     return { ...this.computeClassificationMetrics(labels, preds), loss: lossTotal/(this.points.length||1) };
   }
 }
+
+// ── Neural Network Regression ─────────────────────────────────────
+export class NNRegressionSimulation extends BaseSimulation {
+  setup() {
+    this.history = [];
+    this.epoch   = 0;
+    const { nPoints, seed, noiseLevel, datasetType, hiddenUnits } = this.params;
+    const H = hiddenUnits || 8;
+    this.points = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
+    // 1D input: w1[j] = [w_x, bias]
+    this.w1 = Array.from({ length: H }, (_, i) => [
+      this.randomBetween(-1, 1, seed + 100 + i * 2),
+      this.randomBetween(-0.1, 0.1, seed + 101 + i * 2),
+    ]);
+    this.w2 = Array.from({ length: H + 1 }, (_, i) => this.randomBetween(-0.5, 0.5, seed + 200 + i));
+  }
+
+  reset() { this.setup(); }
+
+  _forward(x) {
+    const act    = this.params.activation || 'tanh';
+    const hidIn  = this.w1.map(ws => ws[0] * x + ws[1]);
+    const hidden = hidIn.map(h => applyAct(h, act));
+    const body   = [...hidden, 1];
+    const out    = this.w2.reduce((s, w, i) => s + w * body[i], 0); // linear output
+    return { hidIn, hidden, out, body };
+  }
+
+  predict(x) { return this._forward(x).out; }
+
+  step() {
+    if (this.epoch >= this.params.epochs) return;
+    const lr  = this.params.learningRate;
+    const l2  = this.params.l2 || 0;
+    const act = this.params.activation || 'tanh';
+    const H   = this.w1.length;
+    this.points.forEach(pt => {
+      const { hidIn, out, body } = this._forward(pt.x);
+      const eOut = out - pt.y; // MSE gradient
+      for (let i = 0; i < this.w2.length; i++)
+        this.w2[i] -= lr * (eOut * body[i] + l2 * this.w2[i]);
+      for (let j = 0; j < H; j++) {
+        const gHid = eOut * this.w2[j] * actDeriv(hidIn[j], act);
+        this.w1[j][0] -= lr * (gHid * pt.x + l2 * this.w1[j][0]);
+        this.w1[j][1] -= lr * gHid;
+      }
+    });
+    this.epoch++;
+    this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
+  }
+
+  computeMetrics() {
+    return this.computeRegressionMetrics(this.points.map(pt => pt.y), this.points.map(pt => this.predict(pt.x)));
+  }
+
+  render() {
+    const { width: W, height: H } = this.canvas;
+    const PAD = 36;
+    this.ctx.clearRect(0, 0, W, H);
+    this.ctx.fillStyle = '#fff'; this.ctx.fillRect(0, 0, W, H);
+    const toX = x => PAD + ((x + 1) / 2) * (W - 2 * PAD);
+    const toY = y => H - PAD - ((y + 1.2) / 2.4) * (H - 2 * PAD);
+    const clamp = y => Math.max(-1.2, Math.min(1.2, y));
+
+    this.ctx.strokeStyle = '#e2e8f0'; this.ctx.lineWidth = 1;
+    this.ctx.beginPath(); this.ctx.moveTo(PAD, toY(0)); this.ctx.lineTo(W - PAD, toY(0)); this.ctx.stroke();
+    this.ctx.beginPath(); this.ctx.moveTo(toX(0), PAD); this.ctx.lineTo(toX(0), H - PAD); this.ctx.stroke();
+
+    if (this.epoch > 0) {
+      this.ctx.beginPath(); this.ctx.strokeStyle = '#1d4ed8'; this.ctx.lineWidth = 2;
+      for (let i = 0; i <= 200; i++) {
+        const x = -1 + (i / 200) * 2, y = clamp(this.predict(x));
+        i === 0 ? this.ctx.moveTo(toX(x), toY(y)) : this.ctx.lineTo(toX(x), toY(y));
+      }
+      this.ctx.stroke();
+    }
+
+    this.points.forEach(({ x, y }) => {
+      this.ctx.beginPath(); this.ctx.arc(toX(x), toY(clamp(y)), 3.5, 0, Math.PI * 2);
+      this.ctx.fillStyle = '#64748b'; this.ctx.fill();
+      this.ctx.strokeStyle = '#fff'; this.ctx.lineWidth = 1; this.ctx.stroke();
+    });
+
+    const m = this.epoch > 0 ? this.computeMetrics() : null;
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(255,255,255,.93)';
+    this.ctx.beginPath(); this.ctx.roundRect(8, 8, 270, 70, 6); this.ctx.fill();
+    this.ctx.strokeStyle = '#e2e8f0'; this.ctx.lineWidth = 1; this.ctx.stroke();
+    [`Epoch: ${this.epoch} / ${this.params.epochs}  |  H: ${this.w1.length}  ${this.params.activation || 'tanh'}`,
+     m ? `MAE: ${m.mae.toFixed(3)}  RMSE: ${m.rmse.toFixed(3)}` : 'Press Run to train',
+    ].forEach((line, i) => {
+      this.ctx.font = i === 0 ? 'bold 12px sans-serif' : '11px sans-serif';
+      this.ctx.fillStyle = i === 0 ? '#1e293b' : '#374151';
+      this.ctx.textAlign = 'left'; this.ctx.fillText(line, 18, 26 + i * 17);
+    });
+    this.ctx.restore();
+  }
+}
+

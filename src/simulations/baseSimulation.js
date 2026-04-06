@@ -82,12 +82,18 @@ export class BaseSimulation {
       const labels = this.testPoints.map(pt => pt.label === 1 ? 1 : 0);
       const preds  = this.testPoints.map(pt => this.predict(pt.x, pt.y) === 1 ? 1 : 0);
       const m = this.computeClassificationMetrics(labels, preds);
-      Object.assign(last, { testAccuracy: m.accuracy, testLoss: m.loss, testF1: m.f1 });
+      Object.assign(last, {
+        testLoss: m.loss, testAccuracy: m.accuracy,
+        testRecall: m.recall, testPrecision: m.precision, testF1: m.f1,
+      });
     } else if (this.taskType === 'regression') {
       const trues = this.testPoints.map(pt => pt.y);
       const preds = this.testPoints.map(pt => this.predict(pt.x));
       const m = this.computeRegressionMetrics(trues, preds);
-      Object.assign(last, { testLoss: m.mse, testMAE: m.mae });
+      Object.assign(last, {
+        testLoss: m.mse, testMAE: m.mae,
+        testRMSE: m.rmse, testMAPE: m.mape, testNMAE: m.nmae,
+      });
     }
   }
 

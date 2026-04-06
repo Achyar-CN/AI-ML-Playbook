@@ -259,13 +259,52 @@ export class UIController {
     // Do NOT set inline max-height here — it would override the CSS toggle.
   }
 
-  // ── Data section (dataset chips + data sliders) ──────────────
+  // ── Data section ─────────────────────────────────────────────
   renderDataParams(sim) {
     const box = document.getElementById('data-param-box');
     if (!box) return;
     box.innerHTML = '';
 
-    // ── Preset scenario buttons ─────────────────────────────────
+    const defaults  = sim.defaultParams || {};
+    const controls  = sim.dataParamControls || [];
+
+    // Separate testSplit from scenario controls
+    const testSplitField    = controls.find(f => f.name === 'testSplit');
+    const scenarioControls  = controls.filter(f => f.name !== 'testSplit');
+
+    // Default mode: 'scenario'. Switch to 'csv' if CSV data is loaded for this task.
+    if (!this._dataSourceMode) this._dataSourceMode = 'scenario';
+    if (dataStore.points && dataStore.type === sim.taskType) this._dataSourceMode = 'csv';
+
+    // ── Source tabs: Scenario | CSV ─────────────────────────────
+    const sourceTabRow = document.createElement('div');
+    sourceTabRow.className = 'data-source-tabs';
+
+    const showSection = (mode) => {
+      this._dataSourceMode = mode;
+      scenarioSection.style.display = mode === 'scenario' ? '' : 'none';
+      csvSection.style.display      = mode === 'csv'      ? '' : 'none';
+      sourceTabRow.querySelectorAll('.data-source-tab').forEach(b =>
+        b.classList.toggle('active', b.dataset.mode === mode)
+      );
+    };
+
+    ['scenario', 'csv'].forEach(mode => {
+      const btn = document.createElement('button');
+      btn.className  = `data-source-tab${mode === this._dataSourceMode ? ' active' : ''}`;
+      btn.dataset.mode = mode;
+      btn.textContent = mode === 'scenario' ? 'Scenario' : 'CSV';
+      btn.addEventListener('click', () => showSection(mode));
+      sourceTabRow.appendChild(btn);
+    });
+    box.appendChild(sourceTabRow);
+
+    // ── Scenario section ─────────────────────────────────────────
+    const scenarioSection = document.createElement('div');
+    scenarioSection.className = 'data-section-content';
+    scenarioSection.style.display = this._dataSourceMode === 'scenario' ? '' : 'none';
+
+    // Preset buttons
     const presets = sim.taskType === 'regression' ? REG_PRESETS : CLASS_PRESETS;
     const presetRow = document.createElement('div');
     presetRow.className = 'preset-row';
@@ -277,16 +316,12 @@ export class UIController {
       btn.addEventListener('click', () => this._applyPreset(params, sim));
       presetRow.appendChild(btn);
     });
-    box.appendChild(presetRow);
+    scenarioSection.appendChild(presetRow);
 
-    const defaults = sim.defaultParams || {};
-    const controls = sim.dataParamControls || [];
-
-    controls.forEach(field => {
+    // Dataset chips + sliders (all controls except testSplit)
+    scenarioControls.forEach(field => {
       const value = this.stateManager.get(field.name, defaults[field.name]);
-
       if (field.type === 'dataset') {
-        // Chip grid for dataset selection
         const chips = document.createElement('div');
         chips.className = 'dataset-chips';
         field.options.forEach(opt => {
@@ -301,28 +336,36 @@ export class UIController {
           });
           chips.appendChild(chip);
         });
-        box.appendChild(chips);
+        scenarioSection.appendChild(chips);
         return;
       }
-
-      box.appendChild(this._buildSliderField(field, value));
+      scenarioSection.appendChild(this._buildSliderField(field, value));
     });
+    box.appendChild(scenarioSection);
 
-    // ── Show Test Points toggle (only when testSplit > 0) ──────────
-    const testSplitVal = Number(this.stateManager.get('testSplit', (sim.defaultParams || {}).testSplit ?? 0));
-    if (testSplitVal > 0) {
-      box.appendChild(this._buildShowTestToggle());
+    // ── CSV section ──────────────────────────────────────────────
+    const csvSection = document.createElement('div');
+    csvSection.className = 'data-section-content';
+    csvSection.style.display = this._dataSourceMode === 'csv' ? '' : 'none';
+    csvSection.appendChild(this._buildCSVImport(sim));
+    box.appendChild(csvSection);
+
+    // ── Always visible: Test Split + Show Test toggle ─────────────
+    const alwaysDiv = document.createElement('div');
+    alwaysDiv.className = 'data-always-section';
+
+    if (testSplitField) {
+      const tsVal = this.stateManager.get('testSplit', defaults.testSplit ?? 0);
+      alwaysDiv.appendChild(this._buildSliderField(testSplitField, tsVal));
     }
-
-    // ── CSV import ──────────────────────────────────────────────
-    box.appendChild(this._buildCSVImport(sim));
+    alwaysDiv.appendChild(this._buildShowTestToggle());
+    box.appendChild(alwaysDiv);
   }
 
   _applyPreset(params, sim) {
-    // Update state manager so chip/slider UI reflects new values
     Object.entries(params).forEach(([k, v]) => this.stateManager.setState({ [k]: v }));
     this.simulationManager.updateCurrentParams(params);
-    this.renderDataParams(sim); // re-render chips + sliders with new values
+    this.renderDataParams(sim);
     this.setStatus('ready');
   }
 
@@ -450,6 +493,7 @@ export class UIController {
       dataStore.zLabel       = null;
       dataStore.is3D         = false;
       dataStore.pcaInfo      = null;
+      this._dataSourceMode   = 'scenario'; // go back to scenario tab after clear
       this.simulationManager.updateCurrentParams({});
       this.renderDataParams(sim);
     });
@@ -579,6 +623,7 @@ export class UIController {
           dataStore.filename = file.name;
         }
 
+        this._dataSourceMode = 'csv'; // auto-switch to CSV tab after load
         this.simulationManager.updateCurrentParams({});
         this.renderDataParams(sim);
         this.setStatus('ready');
@@ -718,11 +763,6 @@ export class UIController {
     this.stateManager.setState({ [name]: value });
     this.renderMetrics([]);
     this._updateEpoch([]);
-    // Re-render data params when testSplit changes so toggle appears/disappears
-    if (name === 'testSplit') {
-      const meta = this.simulationManager.currentMeta;
-      if (meta) this.renderDataParams(meta);
-    }
   }
 
   // ── Metrics ──────────────────────────────────────────────────
@@ -738,11 +778,17 @@ export class UIController {
     rmse:         { label: 'RMSE',              desc: 'Root Mean Squared Error — penalises large errors.',     impact: 'Sensitive to outliers. Use when large errors are especially bad.' },
     mape:         { label: 'MAPE',              desc: 'Mean Absolute Percentage Error.',                       impact: 'Scale-independent. Compare across datasets.' },
     nmae:         { label: 'NMAE',              desc: 'Normalised MAE relative to mean target value.',         impact: 'Allows comparison when target scale varies.' },
-    // ── Test metrics (only populated when testSplit > 0) ───────────
-    testLoss:     { label: 'Loss (Test)',       desc: 'Error on held-out test set.',                           impact: 'Gap vs train loss shows overfitting. High gap = bad generalisation.' },
-    testAccuracy: { label: 'Accuracy (Test)',   desc: 'Fraction correctly classified on test set.',            impact: 'Most reliable accuracy estimate. Aim to match train accuracy.' },
-    testF1:       { label: 'F1 (Test)',         desc: 'F1 score on held-out test set.',                        impact: 'Reliable F1 for imbalanced data. Compare to train F1 for overfit.' },
-    testMAE:      { label: 'MAE (Test)',        desc: 'Mean Absolute Error on held-out test set.',             impact: 'Generalisation quality. Large gap vs train MAE = overfitting.' },
+    // ── Test metrics (classification — mirrors train set) ──────────
+    testLoss:      { label: 'Loss (Test)',       desc: 'Error on held-out test set.',                            impact: 'Gap vs train loss = overfitting signal. High gap = bad generalisation.' },
+    testAccuracy:  { label: 'Accuracy (Test)',   desc: 'Fraction correctly classified on test set.',             impact: 'Most reliable accuracy estimate. Match to train accuracy to check overfit.' },
+    testRecall:    { label: 'Recall (Test)',     desc: 'True positives / (TP + FN) on test set.',                impact: 'Generalisation of recall. Low vs train = model memorised positives.' },
+    testPrecision: { label: 'Precision (Test)',  desc: 'True positives / (TP + FP) on test set.',                impact: 'Generalisation of precision. Large drop = model over-predicts positives.' },
+    testF1:        { label: 'F1 (Test)',         desc: 'Harmonic mean of precision and recall on test set.',     impact: 'Best test summary for imbalanced data. Compare to F1 (Train).' },
+    // ── Test metrics (regression — mirrors train set) ───────────────
+    testMAE:       { label: 'MAE (Test)',        desc: 'Mean Absolute Error on held-out test set.',              impact: 'Generalisation quality. Large gap vs train MAE = overfitting.' },
+    testRMSE:      { label: 'RMSE (Test)',       desc: 'Root Mean Squared Error on held-out test set.',          impact: 'Large test RMSE vs train = outlier sensitivity or overfitting.' },
+    testMAPE:      { label: 'MAPE (Test)',       desc: 'Mean Absolute Percentage Error on held-out test set.',   impact: 'Scale-independent generalisation check.' },
+    testNMAE:      { label: 'NMAE (Test)',       desc: 'Normalised MAE on held-out test set.',                   impact: 'Comparable across different target scales.' },
   };
 
   setupMetrics(sim) {
@@ -772,6 +818,17 @@ export class UIController {
           const testGroup  = this.metricsContainer.querySelector('.metrics-test-group');
           if (trainGroup) trainGroup.style.display = mode === 'train' ? '' : 'none';
           if (testGroup)  testGroup.style.display  = mode === 'test'  ? '' : 'none';
+
+          // When switching to Test tab → auto-activate show test overlay
+          if (mode === 'test') {
+            const s = this.simulationManager.current;
+            if (s && s.showTestOverlay === false) {
+              s.showTestOverlay = true;
+              s.renderWithOverlays();
+            }
+            const chk = document.getElementById('show-test-toggle');
+            if (chk) chk.checked = true;
+          }
         });
         tabRow.appendChild(btn);
       });
@@ -865,7 +922,7 @@ export class UIController {
       const values = history.map(item => item[key] !== undefined ? item[key] : 0);
       const latest = values[values.length - 1];
       const isAcc  = ['accuracy', 'f1', 'recall', 'precision', 'testAccuracy', 'testF1'].includes(key);
-      const isMape = key === 'mape';
+      const isMape = key === 'mape' || key === 'testMAPE';
       const isLoss = key === 'loss' || key === 'testLoss';
 
       if (valSpan) {

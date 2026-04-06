@@ -144,3 +144,107 @@ export class AdaBoostSimulation extends BaseSimulation {
     return this.computeClassificationMetrics(labels, preds);
   }
 }
+
+// ── Gradient Boosting Regression ──────────────────────────────────
+// Fits decision stumps to residuals sequentially (gradient boosting with MSE loss).
+export class GradientBoostingRegressionSimulation extends BaseSimulation {
+  setup() {
+    this.history = [];
+    this.epoch   = 0;
+    this.stumps  = [];
+    const { nPoints, seed, noiseLevel, datasetType } = this.params;
+    this.points  = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
+    this._F0     = this.points.reduce((s, pt) => s + pt.y, 0) / Math.max(this.points.length, 1);
+    this._preds  = this.points.map(() => this._F0); // running predictions
+  }
+
+  _fitStump(residuals) {
+    const vals = [...new Set(this.points.map(pt => pt.x))].sort((a, b) => a - b);
+    let bestMse = Infinity, best = null;
+    for (let i = 0; i < vals.length - 1; i++) {
+      const t = (vals[i] + vals[i + 1]) / 2;
+      const L = [], R = [];
+      this.points.forEach((pt, idx) => (pt.x <= t ? L : R).push(residuals[idx]));
+      if (!L.length || !R.length) continue;
+      const mL = L.reduce((s, v) => s + v, 0) / L.length;
+      const mR = R.reduce((s, v) => s + v, 0) / R.length;
+      const mse = L.reduce((s, v) => s + (v - mL) ** 2, 0) + R.reduce((s, v) => s + (v - mR) ** 2, 0);
+      if (mse < bestMse) { bestMse = mse; best = { t, mL, mR }; }
+    }
+    return best;
+  }
+
+  predict(x) {
+    const lr = this.params.learningRate || 0.1;
+    return this._F0 + this.stumps.reduce((s, st) => s + lr * (x <= st.t ? st.mL : st.mR), 0);
+  }
+
+  step() {
+    if (this.epoch >= this.params.epochs) return;
+    const lr = this.params.learningRate || 0.1;
+    const residuals = this.points.map((pt, i) => pt.y - this._preds[i]);
+    const stump = this._fitStump(residuals);
+    if (stump) {
+      this.stumps.push(stump);
+      this.points.forEach((pt, i) => { this._preds[i] += lr * (pt.x <= stump.t ? stump.mL : stump.mR); });
+    }
+    this.epoch++;
+    this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
+  }
+
+  computeMetrics() {
+    return this.computeRegressionMetrics(this.points.map(pt => pt.y), this.points.map(pt => this.predict(pt.x)));
+  }
+
+  render() {
+    const { width: W, height: H } = this.canvas;
+    const PAD = 36;
+    this.ctx.clearRect(0, 0, W, H);
+    this.ctx.fillStyle = '#fff'; this.ctx.fillRect(0, 0, W, H);
+    const toX = x => PAD + ((x + 1) / 2) * (W - 2 * PAD);
+    const toY = y => H - PAD - ((y + 1.2) / 2.4) * (H - 2 * PAD);
+    const clamp = y => Math.max(-1.2, Math.min(1.2, y));
+
+    this.ctx.strokeStyle = '#e2e8f0'; this.ctx.lineWidth = 1;
+    this.ctx.beginPath(); this.ctx.moveTo(PAD, toY(0)); this.ctx.lineTo(W - PAD, toY(0)); this.ctx.stroke();
+    this.ctx.beginPath(); this.ctx.moveTo(toX(0), PAD); this.ctx.lineTo(toX(0), H - PAD); this.ctx.stroke();
+
+    // Stump split lines (vertical, faint orange)
+    this.ctx.setLineDash([4, 3]);
+    this.ctx.strokeStyle = 'rgba(245,124,0,.4)'; this.ctx.lineWidth = 1;
+    this.stumps.forEach(st => {
+      const px = toX(st.t);
+      this.ctx.beginPath(); this.ctx.moveTo(px, PAD); this.ctx.lineTo(px, H - PAD); this.ctx.stroke();
+    });
+    this.ctx.setLineDash([]);
+
+    if (this.stumps.length) {
+      this.ctx.beginPath(); this.ctx.strokeStyle = '#dc2626'; this.ctx.lineWidth = 2.5;
+      for (let i = 0; i <= 400; i++) {
+        const x = -1 + (i / 400) * 2, y = clamp(this.predict(x));
+        i === 0 ? this.ctx.moveTo(toX(x), toY(y)) : this.ctx.lineTo(toX(x), toY(y));
+      }
+      this.ctx.stroke();
+    }
+
+    this.points.forEach(({ x, y }) => {
+      this.ctx.beginPath(); this.ctx.arc(toX(x), toY(clamp(y)), 3.5, 0, Math.PI * 2);
+      this.ctx.fillStyle = '#64748b'; this.ctx.fill();
+      this.ctx.strokeStyle = '#fff'; this.ctx.lineWidth = 1; this.ctx.stroke();
+    });
+
+    const m = this.stumps.length ? this.computeMetrics() : null;
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(255,255,255,.93)';
+    this.ctx.beginPath(); this.ctx.roundRect(8, 8, 280, 70, 6); this.ctx.fill();
+    this.ctx.strokeStyle = '#e2e8f0'; this.ctx.lineWidth = 1; this.ctx.stroke();
+    [`Round: ${this.epoch} / ${this.params.epochs}  |  LR: ${(this.params.learningRate||0.1).toFixed(2)}`,
+     m ? `MAE: ${m.mae.toFixed(3)}  RMSE: ${m.rmse.toFixed(3)}` : 'Press Run to boost',
+    ].forEach((line, i) => {
+      this.ctx.font = i === 0 ? 'bold 12px sans-serif' : '11px sans-serif';
+      this.ctx.fillStyle = i === 0 ? '#1e293b' : '#374151';
+      this.ctx.textAlign = 'left'; this.ctx.fillText(line, 18, 26 + i * 17);
+    });
+    this.ctx.restore();
+  }
+}
