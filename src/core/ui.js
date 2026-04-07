@@ -30,6 +30,52 @@ export class UIController {
     this._bindDarkToggle();
     this._bindAlgoInfoToggle();
     this._bindSectionCollapses();
+    this._initTooltip();
+  }
+
+  // ── Shared floating tooltip ──────────────────────────────────
+  _initTooltip() {
+    const el = document.createElement('div');
+    el.id = 'tip-bubble';
+    document.body.appendChild(el);
+    this._tipEl = el;
+  }
+
+  _buildTooltipIcon(text) {
+    if (!text) return null;
+    const icon = document.createElement('span');
+    icon.className  = 'tip-icon';
+    icon.textContent = '?';
+    icon.tabIndex   = 0;
+
+    const show = (e) => {
+      const el   = this._tipEl;
+      el.textContent = text;
+      el.classList.add('visible');
+      this._positionTip(e.currentTarget);
+    };
+    const hide = () => this._tipEl.classList.remove('visible');
+
+    icon.addEventListener('mouseenter', show);
+    icon.addEventListener('focus',      show);
+    icon.addEventListener('mouseleave', hide);
+    icon.addEventListener('blur',       hide);
+    return icon;
+  }
+
+  _positionTip(anchor) {
+    const el   = this._tipEl;
+    const rect = anchor.getBoundingClientRect();
+    const gap  = 6;
+    // prefer right of icon, shift left if overflows viewport
+    let left = rect.right + gap;
+    let top  = rect.top - 4;
+    el.style.left = '0'; el.style.top = '0'; // reset so offsetWidth is measurable
+    const bw = el.offsetWidth || 220;
+    if (left + bw > window.innerWidth - 8) left = rect.left - bw - gap;
+    if (top + el.offsetHeight > window.innerHeight - 8) top = window.innerHeight - el.offsetHeight - 8;
+    el.style.left = `${Math.max(8, left)}px`;
+    el.style.top  = `${Math.max(8, top)}px`;
   }
 
   // ── Topbar ──────────────────────────────────────────────────
@@ -651,9 +697,14 @@ export class UIController {
         wrapper.className = 'param-field';
         const row = document.createElement('div');
         row.className = 'toggle-row';
+        const lblWrap = document.createElement('div');
+        lblWrap.style.cssText = 'display:flex;align-items:center;gap:5px;';
         const lbl = document.createElement('label');
         lbl.textContent = field.label;
         lbl.setAttribute('for', `param-${field.name}`);
+        lblWrap.appendChild(lbl);
+        const tip = this._buildTooltipIcon(field.description);
+        if (tip) lblWrap.appendChild(tip);
         const inp = document.createElement('input');
         inp.id = `param-${field.name}`;
         inp.type = 'checkbox';
@@ -661,15 +712,9 @@ export class UIController {
         inp.checked = Boolean(value);
         inp.setAttribute('data-param-name', field.name);
         inp.addEventListener('change', () => this._applyParam(field.name, inp.checked));
-        row.appendChild(lbl);
+        row.appendChild(lblWrap);
         row.appendChild(inp);
         wrapper.appendChild(row);
-        if (field.description) {
-          const d = document.createElement('p');
-          d.className = 'param-desc';
-          d.textContent = field.description;
-          wrapper.appendChild(d);
-        }
         box.appendChild(wrapper);
         return;
       }
@@ -677,10 +722,16 @@ export class UIController {
       if (field.type === 'select') {
         const wrapper = document.createElement('div');
         wrapper.className = 'param-field';
+        const lblWrap = document.createElement('div');
+        lblWrap.style.cssText = 'display:flex;align-items:center;gap:5px;margin-bottom:4px;';
         const lbl = document.createElement('label');
         lbl.textContent = field.label;
         lbl.setAttribute('for', `param-${field.name}`);
-        wrapper.appendChild(lbl);
+        lbl.style.cssText = 'font-size:.78rem;font-weight:600;color:var(--text-primary);';
+        lblWrap.appendChild(lbl);
+        const tip = this._buildTooltipIcon(field.description);
+        if (tip) lblWrap.appendChild(tip);
+        wrapper.appendChild(lblWrap);
         const sel = document.createElement('select');
         sel.id = `param-${field.name}`;
         sel.className = 'param-select';
@@ -694,12 +745,6 @@ export class UIController {
         });
         sel.addEventListener('change', () => this._applyParam(field.name, sel.value));
         wrapper.appendChild(sel);
-        if (field.description) {
-          const d = document.createElement('p');
-          d.className = 'param-desc';
-          d.textContent = field.description;
-          wrapper.appendChild(d);
-        }
         box.appendChild(wrapper);
         return;
       }
@@ -714,13 +759,18 @@ export class UIController {
 
     const header = document.createElement('div');
     header.className = 'param-header';
+    const lblWrap = document.createElement('div');
+    lblWrap.style.cssText = 'display:flex;align-items:center;gap:5px;';
     const lbl = document.createElement('label');
     lbl.textContent = field.label;
     lbl.setAttribute('for', `param-${field.name}`);
+    lblWrap.appendChild(lbl);
+    const tip = this._buildTooltipIcon(field.description);
+    if (tip) lblWrap.appendChild(tip);
     const valDisp = document.createElement('span');
     valDisp.className = 'param-value-display';
     valDisp.textContent = value;
-    header.appendChild(lbl);
+    header.appendChild(lblWrap);
     header.appendChild(valDisp);
     wrapper.appendChild(header);
 
@@ -747,13 +797,6 @@ export class UIController {
     inp.addEventListener('change', () => this._applyParam(field.name, Number(inp.value)));
 
     wrapper.appendChild(inp);
-
-    if (field.description) {
-      const d = document.createElement('p');
-      d.className = 'param-desc';
-      d.textContent = field.description;
-      wrapper.appendChild(d);
-    }
     return wrapper;
   }
 

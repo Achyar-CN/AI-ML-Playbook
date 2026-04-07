@@ -117,7 +117,7 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 }
 .algo-select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(29,78,216,.12); }
 
-.param-box { display: flex; flex-direction: column; gap: 14px; }
+.param-box { display: flex; flex-direction: column; gap: 10px; }
 .param-field { display: flex; flex-direction: column; gap: 4px; }
 .param-header { display: flex; justify-content: space-between; align-items: baseline; }
 .param-header label { font-size: .78rem; font-weight: 600; color: var(--text-primary); }
@@ -140,7 +140,27 @@ input[type="checkbox"].toggle::before {
 input[type="checkbox"].toggle:checked { background: var(--primary); }
 input[type="checkbox"].toggle:checked::before { left: 16px; }
 
-.param-desc { font-size: .68rem; color: var(--text-muted); line-height: 1.4; }
+/* ── Tooltip icon ──────────────────────────────────────────────── */
+.tip-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--border); color: var(--text-muted);
+  font-size: .6rem; font-weight: 700; line-height: 1;
+  cursor: default; flex-shrink: 0; user-select: none;
+  transition: background .15s, color .15s;
+}
+.tip-icon:hover, .tip-icon:focus { background: var(--primary); color: #fff; outline: none; }
+
+#tip-bubble {
+  position: fixed; z-index: 9999; pointer-events: none;
+  max-width: 220px; padding: 7px 10px;
+  background: var(--text-primary); color: var(--panel);
+  font-size: .72rem; line-height: 1.45; font-family: var(--font);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-md);
+  opacity: 0; transition: opacity .12s;
+  white-space: normal; word-break: break-word;
+}
+#tip-bubble.visible { opacity: 1; }
 
 /* CENTER */
 .panel-center {

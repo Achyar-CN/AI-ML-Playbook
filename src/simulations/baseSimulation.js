@@ -18,6 +18,11 @@ export class BaseSimulation {
     this.canvas.height = 600;
     this.container.appendChild(this.canvas);
     this.ctx = this.canvas.getContext('2d');
+    // 3D rotation state (reset on each init so re-selecting resets view)
+    this._3dRotX  = 0.38;   // elevation  (~22°)
+    this._3dRotY  = 0.62;   // azimuth    (~35°)
+    this._3dBound = false;
+    this._3dDrag  = null;
     this.setup();
   }
 
@@ -36,6 +41,8 @@ export class BaseSimulation {
     const ctx = this.ctx;
 
     if (dataStore.is3D) {
+      // Bind drag-to-rotate once per canvas instance
+      if (!this._3dBound) this._bind3DInteraction();
       // 3D mode: replace normal viz with 3D scatter
       this._draw3DScatter(ctx, W, H);
     } else {
@@ -239,6 +246,50 @@ export class BaseSimulation {
     ctx.restore();
   }
 
+  // ── Drag-to-rotate event binding ───────────────────────────────
+  _bind3DInteraction() {
+    this._3dBound = true;
+    const canvas  = this.canvas;
+    canvas.style.cursor = 'grab';
+
+    const onDown = (clientX, clientY) => {
+      const rect = canvas.getBoundingClientRect();
+      this._3dDrag = {
+        x: clientX - rect.left, y: clientY - rect.top,
+        rotX: this._3dRotX, rotY: this._3dRotY,
+      };
+      canvas.style.cursor = 'grabbing';
+    };
+
+    const onMove = (clientX, clientY) => {
+      if (!this._3dDrag) return;
+      const rect = canvas.getBoundingClientRect();
+      const dx   = (clientX - rect.left) - this._3dDrag.x;
+      const dy   = (clientY - rect.top)  - this._3dDrag.y;
+      this._3dRotY = this._3dDrag.rotY + dx * 0.012;
+      this._3dRotX = Math.max(-Math.PI / 2 + 0.05,
+        Math.min(Math.PI / 2 - 0.05, this._3dDrag.rotX - dy * 0.012));
+      this._draw3DScatter(this.ctx, canvas.width, canvas.height);
+    };
+
+    const onUp = () => { this._3dDrag = null; canvas.style.cursor = 'grab'; };
+
+    canvas.addEventListener('mousedown',  e => onDown(e.clientX, e.clientY));
+    canvas.addEventListener('mousemove',  e => onMove(e.clientX, e.clientY));
+    canvas.addEventListener('mouseup',    onUp);
+    canvas.addEventListener('mouseleave', onUp);
+
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      onDown(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      onMove(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    canvas.addEventListener('touchend', onUp);
+  }
+
   // ── 3D Scatter (replaces normal render when dataStore.is3D=true) ──
   _draw3DScatter(ctx, W, H) {
     const dark  = document.documentElement.dataset.theme === 'dark';
@@ -250,43 +301,50 @@ export class BaseSimulation {
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
-    // Isometric projection (x→right, y→up, z→lower-right)
-    const scale = Math.min(W, H) * 0.23;
-    const cx    = W * 0.44;
-    const cy    = H * 0.50;
-    const cos30 = Math.cos(Math.PI / 6);
-    const sin30 = Math.sin(Math.PI / 6);
+    const scale  = Math.min(W, H) * 0.28;
+    const cx     = W * 0.5;
+    const cy     = H * 0.5;
+    const rotX   = this._3dRotX ?? 0.38;
+    const rotY   = this._3dRotY ?? 0.62;
 
-    const to2D = (x, y, z) => ({
-      sx: cx + (x - z) * cos30 * scale,
-      sy: cy - y * scale + (x + z) * sin30 * scale,
-    });
+    // Rotation-matrix projection:
+    //  1. Rotate around Y (azimuth):  x' = x·cosY + z·sinY,  z' = -x·sinY + z·cosY
+    //  2. Rotate around X (elevation): y'' = y·cosX - z'·sinX, z'' = y·sinX + z'·cosX
+    //  3. Orthographic project: sx = cx + x'·scale,  sy = cy - y''·scale
+    const project = (x, y, z) => {
+      const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
+      const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+      const x1  =  x * cosY + z * sinY;
+      const z1  = -x * sinY + z * cosY;
+      const y2  =  y * cosX - z1 * sinX;
+      const z2  =  y * sinX + z1 * cosX;
+      return { sx: cx + x1 * scale, sy: cy - y2 * scale, depth: z2 };
+    };
 
-    // Draw grid on x-z floor plane (y = -1)
+    // Floor grid on y = -1 plane
     ctx.strokeStyle = gridC; ctx.lineWidth = 0.8;
     for (let t = -1; t <= 1; t += 0.5) {
-      const a = to2D(t, -1, -1), b = to2D(t, -1, 1);
+      const a = project(t, -1, -1), b = project(t, -1, 1);
       ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke();
-      const c = to2D(-1, -1, t), d = to2D(1, -1, t);
+      const c = project(-1, -1, t), d = project(1, -1, t);
       ctx.beginPath(); ctx.moveTo(c.sx, c.sy); ctx.lineTo(d.sx, d.sy); ctx.stroke();
     }
 
-    // Draw 3 axes from (-1,-1,-1) to axis ends
-    const O  = to2D(-1, -1, -1);
-    const Xe = to2D( 1, -1, -1);
-    const Ye = to2D(-1,  1, -1);
-    const Ze = to2D(-1, -1,  1);
+    // Axes from origin (-1,-1,-1)
+    const O  = project(-1, -1, -1);
+    const Xe = project( 1, -1, -1);
+    const Ye = project(-1,  1, -1);
+    const Ze = project(-1, -1,  1);
 
     [[Xe, dataStore.xLabel || 'x₁'],
      [Ye, dataStore.yLabel || 'x₂'],
      [Ze, dataStore.zLabel || 'x₃'],
     ].forEach(([end, label]) => {
-      ctx.strokeStyle = axC; ctx.lineWidth = 1.5;
+      ctx.strokeStyle = axC; ctx.lineWidth = 1.8;
       ctx.beginPath(); ctx.moveTo(O.sx, O.sy); ctx.lineTo(end.sx, end.sy); ctx.stroke();
 
-      // Arrowhead
       const ang = Math.atan2(end.sy - O.sy, end.sx - O.sx);
-      const al = 7;
+      const al  = 7;
       ctx.fillStyle = axC;
       ctx.beginPath();
       ctx.moveTo(end.sx, end.sy);
@@ -294,54 +352,51 @@ export class BaseSimulation {
       ctx.lineTo(end.sx - al * Math.cos(ang + 0.4), end.sy - al * Math.sin(ang + 0.4));
       ctx.closePath(); ctx.fill();
 
-      // Axis label
-      const lx = end.sx + (end.sx - O.sx) * 0.12;
-      const ly = end.sy + (end.sy - O.sy) * 0.12;
+      const lx = end.sx + (end.sx - O.sx) * 0.14;
+      const ly = end.sy + (end.sy - O.sy) * 0.14;
       ctx.fillStyle = txtC; ctx.font = 'bold 11px sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(label, lx, ly);
     });
 
-    // Collect all points (train + test) and sort by depth for painter's algorithm
+    // Collect points, sort back-to-front by projected depth (painter's algorithm)
     const trainPts = (this.points || []).map(pt => ({ ...pt, _train: true }));
     const testPts  = (this.testPoints || []).map(pt => ({ ...pt, _train: false }));
     const all = [...trainPts, ...testPts];
-    // Sort: larger (x+z) = further from the viewer → draw first
-    all.sort((a, b) => (b.x + (b.z ?? 0)) - (a.x + (a.z ?? 0)));
 
-    all.forEach(pt => {
-      const { sx, sy } = to2D(pt.x, pt.y, pt.z ?? 0);
-      const r = 4.5;
-      // Depth-based size: points "closer" (low x+z) appear slightly larger
-      const depth = (pt.x + (pt.z ?? 0)) / 2; // -1..1
-      const pr = r * (0.85 + 0.3 * (depth + 1) / 2);
+    const projected = all.map(pt => {
+      const { sx, sy, depth } = project(pt.x, pt.y ?? 0, pt.z ?? 0);
+      return { pt, sx, sy, depth };
+    });
+    projected.sort((a, b) => a.depth - b.depth); // draw far → near
 
+    projected.forEach(({ pt, sx, sy }) => {
+      const r    = 4.5;
       const col1 = pt.label === 1 ? '#1565c0' : '#c62828';
       const col0 = pt.label === 1 ? 'rgba(21,101,192,0.28)' : 'rgba(198,40,40,0.28)';
 
-      ctx.beginPath(); ctx.arc(sx, sy, pr, 0, Math.PI * 2);
-
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2);
       if (pt._train) {
-        ctx.fillStyle = col1;
-        ctx.fill();
+        ctx.fillStyle   = col1; ctx.fill();
         ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
       } else {
-        // Test points: hollow
-        ctx.fillStyle = col0;
-        ctx.fill();
+        ctx.fillStyle   = col0; ctx.fill();
         ctx.strokeStyle = col1; ctx.lineWidth = 2; ctx.stroke();
       }
     });
 
-    // Caption
+    // Info + drag hint badge
     ctx.save();
-    ctx.fillStyle = dark ? 'rgba(15,23,42,0.88)' : 'rgba(255,255,255,0.88)';
+    ctx.fillStyle   = dark ? 'rgba(15,23,42,0.88)' : 'rgba(255,255,255,0.88)';
     ctx.strokeStyle = dark ? '#334155' : '#e2e8f0'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.roundRect(8, 8, 310, 36, 6); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(8, 8, 320, 48, 6); ctx.fill(); ctx.stroke();
     ctx.fillStyle = dark ? '#94a3b8' : '#475569';
     ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText('3D Scatter  •  Model trains on ' +
-      (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.yLabel || 'x₂'), 14, 26);
+      (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.yLabel || 'x₂'), 14, 22);
+    ctx.fillStyle = dark ? '#64748b' : '#94a3b8';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('Drag to rotate  •  Touch supported', 14, 40);
     ctx.restore();
   }
 
