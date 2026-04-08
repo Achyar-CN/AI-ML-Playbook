@@ -1,5 +1,4 @@
 import { BaseSimulation } from '../baseSimulation.js';
-import { dataStore } from '../core/dataStore.js';
 
 // ── Shared helpers ────────────────────────────────────────────────
 function euclidean(ax, ay, bx, by) {
@@ -113,19 +112,14 @@ export class KNNRegressionSimulation extends BaseSimulation {
   setup() {
     this.history = [];
     this.epoch   = 0;
-    this._is3D   = dataStore.is3D && dataStore.type === 'regression';
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
   }
 
-  predict(x, z) {
+  predict(x) {
     const k = Math.min(this.params.k || 5, this.points.length);
     const sorted = this.points
-      .map(pt => {
-        const dx = pt.x - x;
-        const dz = this._is3D ? (pt.z ?? 0) - (z ?? 0) : 0;
-        return { d: Math.sqrt(dx * dx + dz * dz), y: pt.y };
-      })
+      .map(pt => ({ d: Math.abs(pt.x - x), y: pt.y }))
       .sort((a, b) => a.d - b.d);
     return sorted.slice(0, k).reduce((s, n) => s + n.y, 0) / k;
   }
@@ -138,7 +132,7 @@ export class KNNRegressionSimulation extends BaseSimulation {
 
   computeMetrics() {
     const trues = this.points.map(pt => pt.y);
-    const preds = this.points.map(pt => this.predict(pt.x, pt.z));
+    const preds = this.points.map(pt => this.predict(pt.x));
     return this.computeRegressionMetrics(trues, preds);
   }
 

@@ -43,18 +43,17 @@ export class BaseSimulation {
     if (dataStore.is3D) {
       // Bind drag-to-rotate once per canvas instance
       if (!this._3dBound) this._bind3DInteraction();
-      // 3D mode: replace normal viz with 3D scatter (draws its own axes + legend)
+      // 3D mode: replace normal viz with 3D scatter
       this._draw3DScatter(ctx, W, H);
-      return;
-    }
-
-    this.render();
-    // Overlay hollow test-point markers on top of the simulation canvas
-    if (this.testPoints?.length > 0 && this.showTestOverlay !== false) {
-      if (this.taskType === 'classification') {
-        this._drawTestPointsClass(ctx, W, H);
-      } else if (this.taskType === 'regression') {
-        this._drawTestPointsReg(ctx, W, H);
+    } else {
+      this.render();
+      // Overlay hollow test-point markers on top of the simulation canvas
+      if (this.testPoints?.length > 0 && this.showTestOverlay !== false) {
+        if (this.taskType === 'classification') {
+          this._drawTestPointsClass(ctx, W, H);
+        } else if (this.taskType === 'regression') {
+          this._drawTestPointsReg(ctx, W, H);
+        }
       }
     }
 
@@ -96,9 +95,7 @@ export class BaseSimulation {
       });
     } else if (this.taskType === 'regression') {
       const trues = this.testPoints.map(pt => pt.y);
-      const preds = dataStore.is3D
-        ? this.testPoints.map(pt => this.predict(pt.x, pt.z))
-        : this.testPoints.map(pt => this.predict(pt.x));
+      const preds = this.testPoints.map(pt => this.predict(pt.x));
       const m = this.computeRegressionMetrics(trues, preds);
       Object.assign(last, {
         testLoss: m.mse, testMAE: m.mae,
@@ -333,104 +330,16 @@ export class BaseSimulation {
       ctx.beginPath(); ctx.moveTo(c.sx, c.sy); ctx.lineTo(d.sx, d.sy); ctx.stroke();
     }
 
-    // ── Classification: decision boundary on floor (y = -1) ──────
-    const isClassification = this.taskType === 'classification';
-    const isRegression     = this.taskType === 'regression';
-    const hasTrained       = typeof this.predict === 'function' && this.epoch > 0;
-
-    if (isClassification && hasTrained) {
-      const G = 24; // grid resolution for floor boundary
-      const step = 2 / G;
-      for (let gx = 0; gx < G; gx++) {
-        for (let gz = 0; gz < G; gz++) {
-          const fx = -1 + gx * step;
-          const fz = -1 + gz * step;
-          // Model predicts using x,y (first 2 features); in 3D, x→x, y→y of data
-          // but floor uses x→feature1, z→feature2; data.y = feature2
-          const pred = this.predict(fx, fz);
-          const col  = pred === 1
-            ? 'rgba(29,78,216,0.18)' : 'rgba(220,38,38,0.18)';
-          // Draw filled quad on y=-1 floor
-          const c0 = project(fx,        -1, fz);
-          const c1 = project(fx + step,  -1, fz);
-          const c2 = project(fx + step,  -1, fz + step);
-          const c3 = project(fx,         -1, fz + step);
-          ctx.fillStyle = col;
-          ctx.beginPath();
-          ctx.moveTo(c0.sx, c0.sy);
-          ctx.lineTo(c1.sx, c1.sy);
-          ctx.lineTo(c2.sx, c2.sy);
-          ctx.lineTo(c3.sx, c3.sy);
-          ctx.closePath();
-          ctx.fill();
-        }
-      }
-    }
-
-    // ── Regression: prediction surface mesh ──────────────────────
-    if (isRegression && hasTrained) {
-      const G = 20;
-      const step = 2 / G;
-      // Build grid of predicted y values
-      const grid = [];
-      for (let gx = 0; gx <= G; gx++) {
-        grid[gx] = [];
-        for (let gz = 0; gz <= G; gz++) {
-          const fx = -1 + gx * step;
-          const fz = -1 + gz * step;
-          const py = Math.max(-1, Math.min(1, this.predict(fx, fz)));
-          grid[gx][gz] = py;
-        }
-      }
-      // Draw surface quads (semi-transparent blue)
-      for (let gx = 0; gx < G; gx++) {
-        for (let gz = 0; gz < G; gz++) {
-          const fx = -1 + gx * step;
-          const fz = -1 + gz * step;
-          const c0 = project(fx,        grid[gx][gz],       fz);
-          const c1 = project(fx + step,  grid[gx+1][gz],     fz);
-          const c2 = project(fx + step,  grid[gx+1][gz+1],   fz + step);
-          const c3 = project(fx,         grid[gx][gz+1],     fz + step);
-          const avgDepth = (c0.depth + c1.depth + c2.depth + c3.depth) / 4;
-          // Color by average height
-          const avgY = (grid[gx][gz] + grid[gx+1][gz] + grid[gx+1][gz+1] + grid[gx][gz+1]) / 4;
-          const t = (avgY + 1) / 2; // 0..1
-          const r = Math.round(30 + t * 190);
-          const g = Math.round(60 + (1 - Math.abs(t - 0.5) * 2) * 100);
-          const b = Math.round(220 - t * 190);
-          ctx.fillStyle = `rgba(${r},${g},${b},0.25)`;
-          ctx.strokeStyle = `rgba(${r},${g},${b},0.35)`;
-          ctx.lineWidth = 0.5;
-          ctx.beginPath();
-          ctx.moveTo(c0.sx, c0.sy);
-          ctx.lineTo(c1.sx, c1.sy);
-          ctx.lineTo(c2.sx, c2.sy);
-          ctx.lineTo(c3.sx, c3.sy);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        }
-      }
-    }
-
     // Axes from origin (-1,-1,-1)
     const O  = project(-1, -1, -1);
     const Xe = project( 1, -1, -1);
     const Ye = project(-1,  1, -1);
     const Ze = project(-1, -1,  1);
 
-    // Classification: swap y↔z so feature2 goes to z-axis (floor) for boundary viz
-    //   X-axis = feature1, Z-axis = feature2, Y-axis(vertical) = feature3
-    // Regression: x=f1, y(vertical)=target, z=f2
-    const axLabels = isRegression
-      ? [[Xe, dataStore.xLabel || 'x₁'],
-         [Ye, dataStore.targetName || 'y'],
-         [Ze, dataStore.zLabel || 'x₂']]
-      : [[Xe, dataStore.xLabel || 'x₁'],
-         [Ye, dataStore.zLabel || 'x₃'],
-         [Ze, dataStore.yLabel || 'x₂']];
-
-    axLabels.forEach(([end, label]) => {
+    [[Xe, dataStore.xLabel || 'x₁'],
+     [Ye, dataStore.yLabel || 'x₂'],
+     [Ze, dataStore.zLabel || 'x₃'],
+    ].forEach(([end, label]) => {
       ctx.strokeStyle = axC; ctx.lineWidth = 1.8;
       ctx.beginPath(); ctx.moveTo(O.sx, O.sy); ctx.lineTo(end.sx, end.sy); ctx.stroke();
 
@@ -456,54 +365,23 @@ export class BaseSimulation {
     const all = [...trainPts, ...testPts];
 
     const projected = all.map(pt => {
-      const px = pt.x;
-      // Classification: swap y↔z so feature2→z-axis, feature3→vertical
-      const py = isClassification ? (pt.z ?? 0) : (pt.y ?? 0);
-      const pz = isClassification ? (pt.y ?? 0) : (pt.z ?? 0);
-      const { sx, sy, depth } = project(px, py, pz);
+      const { sx, sy, depth } = project(pt.x, pt.y ?? 0, pt.z ?? 0);
       return { pt, sx, sy, depth };
     });
     projected.sort((a, b) => a.depth - b.depth); // draw far → near
 
     projected.forEach(({ pt, sx, sy }) => {
-      if (isClassification) {
-        // Classification: colored by label, shapes differ for train/test
-        const col1 = pt.label === 1 ? '#1565c0' : '#c62828';
-        const col0 = pt.label === 1 ? 'rgba(21,101,192,0.28)' : 'rgba(198,40,40,0.28)';
+      const r    = 4.5;
+      const col1 = pt.label === 1 ? '#1565c0' : '#c62828';
+      const col0 = pt.label === 1 ? 'rgba(21,101,192,0.28)' : 'rgba(198,40,40,0.28)';
 
-        if (pt._train) {
-          // Train: filled circle
-          ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
-          ctx.fillStyle   = col1; ctx.fill();
-          ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
-        } else {
-          // Test: hollow square (consistent with 2D)
-          const r = 5;
-          ctx.fillStyle   = 'rgba(255,255,255,0.55)';
-          ctx.strokeStyle = col1; ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.rect(sx - r, sy - r, r * 2, r * 2);
-          ctx.fill(); ctx.stroke();
-        }
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      if (pt._train) {
+        ctx.fillStyle   = col1; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
       } else {
-        // Regression: single color, shapes differ for train/test
-        const col = '#1d4ed8';
-        if (pt._train) {
-          ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2);
-          ctx.fillStyle = '#64748b'; ctx.fill();
-          ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
-        } else {
-          // Test: hollow diamond (consistent with 2D)
-          const r = 4.5;
-          ctx.fillStyle   = 'rgba(255,255,255,0.55)';
-          ctx.strokeStyle = col; ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(sx,     sy - r);
-          ctx.lineTo(sx + r, sy);
-          ctx.lineTo(sx,     sy + r);
-          ctx.lineTo(sx - r, sy);
-          ctx.closePath();
-          ctx.fill(); ctx.stroke();
-        }
+        ctx.fillStyle   = col0; ctx.fill();
+        ctx.strokeStyle = col1; ctx.lineWidth = 2; ctx.stroke();
       }
     });
 
@@ -514,23 +392,12 @@ export class BaseSimulation {
     ctx.beginPath(); ctx.roundRect(8, 8, 320, 48, 6); ctx.fill(); ctx.stroke();
     ctx.fillStyle = dark ? '#94a3b8' : '#475569';
     ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    if (isRegression) {
-      ctx.fillText('3D Scatter  •  Model trains on ' +
-        (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.zLabel || 'x₂') +
-        ' → ' + (dataStore.targetName || 'y'), 14, 22);
-    } else {
-      ctx.fillText('3D Scatter  •  Model trains on ' +
-        (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.yLabel || 'x₂'), 14, 22);
-    }
+    ctx.fillText('3D Scatter  •  Model trains on ' +
+      (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.yLabel || 'x₂'), 14, 22);
     ctx.fillStyle = dark ? '#64748b' : '#94a3b8';
     ctx.font = '10px sans-serif';
     ctx.fillText('Drag to rotate  •  Touch supported', 14, 40);
     ctx.restore();
-
-    // Train / Test legend for 3D
-    if (this.testPoints?.length > 0) {
-      this._drawTrainTestLegend(ctx, W, H);
-    }
   }
 
   // ── Classification metrics ──────────────────────────────────────

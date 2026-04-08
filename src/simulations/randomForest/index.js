@@ -1,5 +1,4 @@
 import { BaseSimulation } from '../baseSimulation.js';
-import { dataStore } from '../core/dataStore.js';
 
 // ── Shared tree helpers ───────────────────────────────────────────
 function gini(data) {
@@ -53,42 +52,36 @@ function mseFn(data) {
   return data.reduce((s, pt) => s + (pt.y - m) ** 2, 0) / data.length;
 }
 
-function buildRegTree(data, depth, maxDepth, minLeaf, is3D, rng) {
+function buildRegTree(data, depth, maxDepth, minLeaf) {
   if (!data.length) return { value: 0 };
   const meanY = data.reduce((s, pt) => s + pt.y, 0) / data.length;
   if (depth >= maxDepth || data.length < minLeaf) return { value: meanY };
 
-  // Try splitting on available features
-  const features = is3D ? ['x', 'z'] : ['x'];
+  const vals = [...new Set(data.map(pt => pt.x))].sort((a, b) => a - b);
   let bestGain = 0, best = null;
   const pM = mseFn(data);
 
-  for (const feature of features) {
-    const vals = [...new Set(data.map(pt => pt[feature] ?? 0))].sort((a, b) => a - b);
-    for (let i = 0; i < vals.length - 1; i++) {
-      const t = (vals[i] + vals[i + 1]) / 2;
-      const L = data.filter(pt => (pt[feature] ?? 0) <= t);
-      const R = data.filter(pt => (pt[feature] ?? 0) > t);
-      if (!L.length || !R.length) continue;
-      const wM = (L.length * mseFn(L) + R.length * mseFn(R)) / data.length;
-      if (pM - wM > bestGain) { bestGain = pM - wM; best = { feature, t, L, R }; }
-    }
+  for (let i = 0; i < vals.length - 1; i++) {
+    const t = (vals[i] + vals[i + 1]) / 2;
+    const L = data.filter(pt => pt.x <= t);
+    const R = data.filter(pt => pt.x > t);
+    if (!L.length || !R.length) continue;
+    const wM = (L.length * mseFn(L) + R.length * mseFn(R)) / data.length;
+    if (pM - wM > bestGain) { bestGain = pM - wM; best = { t, L, R }; }
   }
   if (!best) return { value: meanY };
   return {
-    feature: best.feature,
     threshold: best.t,
-    left:  buildRegTree(best.L, depth + 1, maxDepth, minLeaf, is3D, rng),
-    right: buildRegTree(best.R, depth + 1, maxDepth, minLeaf, is3D, rng),
+    left:  buildRegTree(best.L, depth + 1, maxDepth, minLeaf),
+    right: buildRegTree(best.R, depth + 1, maxDepth, minLeaf),
   };
 }
 
-function predictRegTree(node, x, z) {
+function predictRegTree(node, x) {
   if (node.value !== undefined) return node.value;
-  const v = node.feature === 'z' ? (z ?? 0) : x;
-  return v <= node.threshold
-    ? predictRegTree(node.left, x, z)
-    : predictRegTree(node.right, x, z);
+  return x <= node.threshold
+    ? predictRegTree(node.left, x)
+    : predictRegTree(node.right, x);
 }
 
 // ── Random Forest Classification ──────────────────────────────────
@@ -186,21 +179,19 @@ export class RandomForestClassificationSimulation extends BaseSimulation {
 }
 
 // ── Random Forest Regression ──────────────────────────────────────
-
 export class RandomForestRegressionSimulation extends BaseSimulation {
   setup() {
     this.history = [];
     this.epoch   = 0;
     this.forest  = [];
-    this._is3D   = dataStore.is3D && dataStore.type === 'regression';
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
     this._rng = this.seededRandom((seed || 42) + 1337);
   }
 
-  predict(x, z) {
+  predict(x) {
     if (!this.forest.length) return 0;
-    return this.forest.reduce((s, tree) => s + predictRegTree(tree, x, z), 0) / this.forest.length;
+    return this.forest.reduce((s, tree) => s + predictRegTree(tree, x), 0) / this.forest.length;
   }
 
   step() {
@@ -209,13 +200,13 @@ export class RandomForestRegressionSimulation extends BaseSimulation {
     this.epoch++;
     const n = this.points.length;
     const bootstrap = Array.from({ length: n }, () => this.points[Math.floor(this._rng() * n)]);
-    this.forest.push(buildRegTree(bootstrap, 0, this.params.maxDepth || 4, this.params.minLeafSize || 3, this._is3D, this._rng));
+    this.forest.push(buildRegTree(bootstrap, 0, this.params.maxDepth || 4, this.params.minLeafSize || 3));
     this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
   }
 
   computeMetrics() {
     const trues = this.points.map(pt => pt.y);
-    const preds = this.points.map(pt => this.predict(pt.x, pt.z));
+    const preds = this.points.map(pt => this.predict(pt.x));
     return this.computeRegressionMetrics(trues, preds);
   }
 

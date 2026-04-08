@@ -1,5 +1,4 @@
 import { BaseSimulation } from '../baseSimulation.js';
-import { dataStore } from '../core/dataStore.js';
 
 // ── LightGBM histogram helpers ────────────────────────────────────
 // Key difference from XGBoost: leaf-wise (best-first) tree growth
@@ -204,23 +203,20 @@ export class LightGBMClassificationSimulation extends BaseSimulation {
 }
 
 // ── LightGBM Regression ───────────────────────────────────────────
-
 export class LightGBMRegressionSimulation extends BaseSimulation {
   setup() {
     this.history = [];
     this.epoch   = 0;
     this.trees   = [];
-    this._is3D   = dataStore.is3D && dataStore.type === 'regression';
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
     this._F0    = this.points.reduce((s, pt) => s + pt.y, 0) / Math.max(this.points.length, 1);
     this._F     = this.points.map(() => this._F0);
   }
 
-  predict(x, z) {
+  predict(x) {
     const lr = this.params.learningRate || 0.1;
-    const y2 = this._is3D ? (z ?? 0) : 0;
-    return this._F0 + this.trees.reduce((s, t) => s + lr * lgbmPredict(t, x, y2), 0);
+    return this._F0 + this.trees.reduce((s, t) => s + lr * lgbmPredict(t, x, 0), 0);
   }
 
   step() {
@@ -231,22 +227,17 @@ export class LightGBMRegressionSimulation extends BaseSimulation {
     const maxLeaves = this.params.maxLeaves || 8;
 
     // Regression: g = F - y, h = 1 (MSE gradient/hessian)
-    // In 3D mode: pt.z → tree's 'y' feature so splits use both x and z
-    const recs = this.points.map((pt, i) => ({
-      pt: { x: pt.x, y: this._is3D ? (pt.z ?? 0) : 0 },
-      g: this._F[i] - pt.y, h: 1,
-    }));
+    // Use x only (y=0 placeholder so lgbmPredict works on x feature)
+    const recs = this.points.map((pt, i) => ({ pt: { x: pt.x, y: 0 }, g: this._F[i] - pt.y, h: 1 }));
     const tree = lgbmBuildTree(recs, maxLeaves, lambda, gamma);
     this.trees.push(tree);
-    this.points.forEach((pt, i) => {
-      this._F[i] += lr * lgbmPredict(tree, pt.x, this._is3D ? (pt.z ?? 0) : 0);
-    });
+    this.points.forEach((pt, i) => { this._F[i] += lr * lgbmPredict(tree, pt.x, 0); });
     this.epoch++;
     this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
   }
 
   computeMetrics() {
-    return this.computeRegressionMetrics(this.points.map(pt => pt.y), this.points.map(pt => this.predict(pt.x, pt.z)));
+    return this.computeRegressionMetrics(this.points.map(pt => pt.y), this.points.map(pt => this.predict(pt.x)));
   }
 
   render() {

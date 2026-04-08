@@ -1,38 +1,28 @@
 import { BaseSimulation } from '../baseSimulation.js';
-import { dataStore } from '../core/dataStore.js';
 
 export class LinearRegressionSimulation extends BaseSimulation {
   setup() {
     this.history = [];
     this.epoch   = 0;
-    this._is3D   = dataStore.is3D && dataStore.type === 'regression';
     const { nPoints, seed, noiseLevel, datasetType, degree } = this.params;
     const deg = Math.max(1, Math.round(degree || 1));
 
     this.points = this.generateRegressionDataset(datasetType || 'linear', nPoints, seed, noiseLevel ?? 0.25);
 
-    // Weight count depends on 1D vs 2D input
-    const nWeights = this._is3D
-      ? 1 + 2 * deg + (deg >= 2 ? 1 : 0) // [1, x, z, x², z², xz] for deg=2; [1, x, z] for deg=1
-      : deg + 1;
-    this.weights = Array.from({ length: nWeights }, (_, i) =>
+    // Weights: one per polynomial feature [x^0, x^1, ..., x^deg]
+    this.weights = Array.from({ length: deg+1 }, (_, i) =>
       this.randomBetween(-0.1, 0.1, seed + i + 10)
     );
   }
 
-  _polyFeatures(x, z) {
-    if (this._is3D) {
-      const deg = Math.max(1, Math.round(this.params.degree || 1));
-      const f = [1, x, z];
-      if (deg >= 2) { f.push(x * x, z * z, x * z); }
-      return f;
-    }
+  _polyFeatures(x) {
+    // [1, x, x^2, ..., x^deg]
     return this.weights.map((_, i) => Math.pow(x, i));
   }
 
-  predict(x, z) {
-    const feats = this._polyFeatures(x, z);
-    return feats.reduce((s, f, i) => s + (this.weights[i] ?? 0) * f, 0);
+  predict(x) {
+    const feats = this._polyFeatures(x);
+    return this.weights.reduce((s, w, i) => s + w * feats[i], 0);
   }
 
   step() {
@@ -43,8 +33,8 @@ export class LinearRegressionSimulation extends BaseSimulation {
     const grads = new Array(this.weights.length).fill(0);
 
     this.points.forEach(pt => {
-      const feats = this._polyFeatures(pt.x, pt.z);
-      const err   = this.predict(pt.x, pt.z) - pt.y;
+      const feats = this._polyFeatures(pt.x);
+      const err   = this.predict(pt.x) - pt.y;
       feats.forEach((f, i) => { grads[i] += err * f; });
     });
 
@@ -86,11 +76,10 @@ export class LinearRegressionSimulation extends BaseSimulation {
     this.ctx.stroke();
 
     // Residual lines
-    this.points.forEach((pt) => {
-      const { x, y } = pt;
+    this.points.forEach(({ x, y }) => {
       const px    = ((x+1)/2)*W;
       const py    = H-((y+1)/2)*H;
-      const yHat  = this.predict(x, pt.z);
+      const yHat  = this.predict(x);
       const pyHat = H-((yHat+1)/2)*H;
       this.ctx.strokeStyle = y > yHat ? 'rgba(29,78,216,.35)' : 'rgba(220,38,38,.35)';
       this.ctx.lineWidth = 1.5;
@@ -139,7 +128,7 @@ export class LinearRegressionSimulation extends BaseSimulation {
 
   _r2() {
     const ys   = this.points.map(pt => pt.y);
-    const preds = this.points.map(pt => this.predict(pt.x, pt.z));
+    const preds = this.points.map(pt => this.predict(pt.x));
     const mean = ys.reduce((s,v)=>s+v,0)/(ys.length||1);
     let ssTot=0, ssRes=0;
     ys.forEach((v,i) => { ssTot += (v-mean)**2; ssRes += (v-preds[i])**2; });
@@ -148,7 +137,7 @@ export class LinearRegressionSimulation extends BaseSimulation {
 
   computeMetrics() {
     const trueVals = this.points.map(pt => pt.y);
-    const preds    = this.points.map(pt => this.predict(pt.x, pt.z));
+    const preds    = this.points.map(pt => this.predict(pt.x));
     return this.computeRegressionMetrics(trueVals, preds);
   }
 }

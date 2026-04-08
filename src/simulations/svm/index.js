@@ -1,5 +1,4 @@
 import { BaseSimulation } from '../baseSimulation.js';
-import { dataStore } from '../core/dataStore.js';
 
 // ── Feature maps ──────────────────────────────────────────────────
 function phiClass(x, y, kernel) {
@@ -142,31 +141,16 @@ export class SVMClassificationSimulation extends BaseSimulation {
 }
 
 // ── SVR (SVM Regression) ──────────────────────────────────────────
-
-function phiReg2D(x, z, kernel) {
-  return kernel === 'poly2' ? [1, x, z, x * x, z * z, x * z] : [1, x, z];
-}
-
 export class SVRSimulation extends BaseSimulation {
   setup() {
     this.history = [];
     this.epoch   = 0;
-    this._is3D   = dataStore.is3D && dataStore.type === 'regression';
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
-    const kernel = this.params.kernel || 'linear';
-    const nW = this._is3D
-      ? (kernel === 'poly2' ? 6 : 3)
-      : (kernel === 'poly2' ? 3 : 2);
-    this.w = new Array(nW).fill(0);
+    this.w = new Array(this.params.kernel === 'poly2' ? 3 : 2).fill(0);
   }
 
-  _phi(x, z) {
-    const kernel = this.params.kernel || 'linear';
-    return this._is3D ? phiReg2D(x, z, kernel) : phiReg(x, kernel);
-  }
-
-  predict(x, z) { return dot(this.w, this._phi(x, z)); }
+  predict(x) { return dot(this.w, phiReg(x, this.params.kernel || 'linear')); }
 
   step() {
     const epochs = this.params.epochs || 200;
@@ -176,13 +160,14 @@ export class SVRSimulation extends BaseSimulation {
     const eps = this.params.epsilon || 0.1;
     const lr  = this.params.learningRate || 0.01;
     const n   = this.points.length;
+    const kernel = this.params.kernel || 'linear';
     const grad = new Array(this.w.length).fill(0);
 
     for (let j = 1; j < this.w.length; j++) grad[j] += this.w[j] / n;
 
-    this.points.forEach(pt => {
-      const phi  = this._phi(pt.x, pt.z);
-      const err  = dot(this.w, phi) - pt.y;
+    this.points.forEach(({ x, y }) => {
+      const phi  = phiReg(x, kernel);
+      const err  = dot(this.w, phi) - y;
       if (err > eps) {
         for (let j = 0; j < phi.length; j++) grad[j] += (C / n) * phi[j];
       } else if (err < -eps) {
@@ -196,7 +181,7 @@ export class SVRSimulation extends BaseSimulation {
 
   computeMetrics() {
     const trues = this.points.map(pt => pt.y);
-    const preds = this.points.map(pt => this.predict(pt.x, pt.z));
+    const preds = this.points.map(pt => this.predict(pt.x));
     return this.computeRegressionMetrics(trues, preds);
   }
 
@@ -242,9 +227,8 @@ export class SVRSimulation extends BaseSimulation {
     }
 
     // Points (yellow ring = outside epsilon tube = support vector)
-    this.points.forEach((pt) => {
-      const { x, y } = pt;
-      const isSV = this.epoch > 0 && Math.abs(this.predict(x, pt.z) - y) > eps;
+    this.points.forEach(({ x, y }) => {
+      const isSV = this.epoch > 0 && Math.abs(this.predict(x) - y) > eps;
       this.ctx.beginPath(); this.ctx.arc(toX(x), toY(clampY(y)), 3.5, 0, Math.PI * 2);
       this.ctx.fillStyle   = '#64748b'; this.ctx.fill();
       this.ctx.strokeStyle = isSV ? '#f59e0b' : '#fff';
