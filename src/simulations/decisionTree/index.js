@@ -1,4 +1,5 @@
 import { BaseSimulation } from '../baseSimulation.js';
+import { dataStore } from '../core/dataStore.js';
 
 export class DecisionTreeSimulation extends BaseSimulation {
   setup() {
@@ -179,6 +180,7 @@ export class DecisionTreeRegressionSimulation extends BaseSimulation {
     this.history = [];
     this.epoch   = 0;
     this.tree    = null;
+    this._is3D   = dataStore.is3D && dataStore.type === 'regression';
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
   }
@@ -195,29 +197,36 @@ export class DecisionTreeRegressionSimulation extends BaseSimulation {
     if (depth >= maxDepth || data.length < minLeaf) return { value: meanY };
     const pMse = this._mse(data);
     let bestGain = 1e-10, bestSplit = null;
-    const vals = [...new Set(data.map(pt => pt.x))].sort((a, b) => a - b);
-    for (let i = 0; i < vals.length - 1; i++) {
-      const t = (vals[i] + vals[i + 1]) / 2;
-      const L = data.filter(pt => pt.x <= t), R = data.filter(pt => pt.x > t);
-      if (!L.length || !R.length) continue;
-      const wMse = (L.length * this._mse(L) + R.length * this._mse(R)) / data.length;
-      const gain = pMse - wMse;
-      if (gain > bestGain) { bestGain = gain; bestSplit = { t, L, R }; }
+
+    const features = this._is3D ? ['x', 'z'] : ['x'];
+    for (const feat of features) {
+      const vals = [...new Set(data.map(pt => pt[feat] ?? 0))].sort((a, b) => a - b);
+      for (let i = 0; i < vals.length - 1; i++) {
+        const t = (vals[i] + vals[i + 1]) / 2;
+        const L = data.filter(pt => (pt[feat] ?? 0) <= t);
+        const R = data.filter(pt => (pt[feat] ?? 0) > t);
+        if (!L.length || !R.length) continue;
+        const wMse = (L.length * this._mse(L) + R.length * this._mse(R)) / data.length;
+        const gain = pMse - wMse;
+        if (gain > bestGain) { bestGain = gain; bestSplit = { feat, t, L, R }; }
+      }
     }
     if (!bestSplit) return { value: meanY };
     return {
+      feature: bestSplit.feat,
       threshold: bestSplit.t,
       left:  this._buildNode(bestSplit.L, depth + 1, maxDepth, minLeaf),
       right: this._buildNode(bestSplit.R, depth + 1, maxDepth, minLeaf),
     };
   }
 
-  _predictNode(node, x) {
+  _predictNode(node, x, z) {
     if (node.value !== undefined) return node.value;
-    return x <= node.threshold ? this._predictNode(node.left, x) : this._predictNode(node.right, x);
+    const v = node.feature === 'z' ? (z ?? 0) : x;
+    return v <= node.threshold ? this._predictNode(node.left, x, z) : this._predictNode(node.right, x, z);
   }
 
-  predict(x) { return this.tree ? this._predictNode(this.tree, x) : 0; }
+  predict(x, z) { return this.tree ? this._predictNode(this.tree, x, z) : 0; }
 
   step() {
     const maxDepth = this.params.maxDepth || 5;
@@ -228,7 +237,7 @@ export class DecisionTreeRegressionSimulation extends BaseSimulation {
   }
 
   computeMetrics() {
-    return this.computeRegressionMetrics(this.points.map(pt => pt.y), this.points.map(pt => this.predict(pt.x)));
+    return this.computeRegressionMetrics(this.points.map(pt => pt.y), this.points.map(pt => this.predict(pt.x, pt.z)));
   }
 
   render() {

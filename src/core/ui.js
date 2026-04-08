@@ -474,16 +474,17 @@ export class UIController {
     header.appendChild(label);
     header.appendChild(sampleLink);
 
-    // Extra 3D sample link for classification
-    if (sim.taskType === 'classification') {
-      const s3d = document.createElement('a');
-      s3d.className  = 'csv-sample-link';
-      s3d.href       = 'samples/classification_3d_sample.csv';
-      s3d.download   = '';
-      s3d.textContent = '3D sample';
-      s3d.style.marginLeft = '6px';
-      header.appendChild(s3d);
-    }
+    // Extra 3D sample link
+    const s3dHref = sim.taskType === 'regression'
+      ? 'samples/regression_3d_sample.csv'
+      : 'samples/classification_3d_sample.csv';
+    const s3d = document.createElement('a');
+    s3d.className  = 'csv-sample-link';
+    s3d.href       = s3dHref;
+    s3d.download   = '';
+    s3d.textContent = '3D sample';
+    s3d.style.marginLeft = '6px';
+    header.appendChild(s3d);
     wrap.appendChild(header);
 
     // Status / filename row
@@ -550,7 +551,8 @@ export class UIController {
     const fmt = document.createElement('p');
     fmt.className = 'csv-format-hint';
     if (sim.taskType === 'regression') {
-      fmt.textContent = 'Format: x,y  (header row optional)';
+      fmt.innerHTML = 'Format: <b>f1[,f2,...],target</b><br>'
+        + '1 feature → 2D  |  2 features → <b>3D surface</b>  |  3+ → <b>PCA 1D</b>';
     } else {
       fmt.innerHTML = 'Format: <b>f1,f2[,f3,...],label</b><br>'
         + '2 features → 2D  |  3 features → <b>3D scatter</b>  |  4+ → <b>PCA 2D</b>';
@@ -590,21 +592,55 @@ export class UIController {
         dataStore.pcaInfo      = null;
 
         if (sim.taskType === 'regression') {
-          // Regression: exactly 2 columns (1 feature + 1 target)
-          const raw = dataRows.filter(r => r.length >= 2 && !isNaN(r[0]) && !isNaN(r[1]));
+          const nCols = dataRows[0]?.length ?? 0;
+          if (nCols < 2) throw new Error('Need at least 2 columns (1 feature + target)');
+          const nFeat = nCols - 1; // last column = target
+
+          const raw = dataRows.filter(r =>
+            r.length >= nCols && r.every(v => !isNaN(v))
+          );
           if (!raw.length) throw new Error('No valid rows');
 
-          const fName = headerRow?.[0] ?? 'x';
-          const tName = headerRow?.[1] ?? 'y';
-          dataStore.featureNames = [fName];
-          dataStore.targetName   = tName;
-          dataStore.nFeatures    = 1;
-          dataStore.xLabel       = fName;
-          dataStore.yLabel       = tName;
+          const featNames = headerRow
+            ? headerRow.slice(0, nFeat)
+            : Array.from({ length: nFeat }, (_, i) => `x${i + 1}`);
+          const tName = headerRow?.[nFeat] ?? 'y';
 
-          const nx = norm1D(raw.map(r => r[0]));
-          const ny = norm1D(raw.map(r => r[1]));
-          dataStore.points   = nx.map((x, i) => ({ x, y: ny[i] }));
+          dataStore.featureNames = featNames;
+          dataStore.targetName   = tName;
+          dataStore.nFeatures    = nFeat;
+
+          const ny = norm1D(raw.map(r => r[nFeat])); // target always last col
+
+          if (nFeat === 1) {
+            // ── 2D regression: 1 feature + 1 target ────────────
+            const nx = norm1D(raw.map(r => r[0]));
+            dataStore.xLabel  = featNames[0];
+            dataStore.yLabel  = tName;
+            dataStore.points  = nx.map((x, i) => ({ x, y: ny[i] }));
+          } else if (nFeat === 2) {
+            // ── 3D regression: 2 features + 1 target ───────────
+            const nx = norm1D(raw.map(r => r[0]));
+            const nz = norm1D(raw.map(r => r[1]));
+            dataStore.xLabel  = featNames[0];
+            dataStore.zLabel  = featNames[1];
+            dataStore.yLabel  = tName; // y-axis = target in 3D
+            dataStore.is3D    = true;
+            dataStore.points  = nx.map((x, i) => ({ x, y: ny[i], z: nz[i] }));
+          } else {
+            // ── >2 features: PCA → 1D (keep simplest approach) ─
+            const X = raw.map(r => r.slice(0, nFeat));
+            const { projected, varExplained } = computePCA(X);
+            const pct = varExplained.map(v => `${(v * 100).toFixed(0)}%`);
+            // Use first PC as single feature
+            const pc1Vals = projected.map(p => p[0]);
+            const npc = norm1D(pc1Vals);
+            dataStore.xLabel  = `PC1 (${pct[0]})`;
+            dataStore.yLabel  = tName;
+            dataStore.pcaInfo = { varExplained };
+            dataStore.points  = npc.map((x, i) => ({ x, y: ny[i] }));
+          }
+
           dataStore.type     = 'regression';
           dataStore.filename = file.name;
 
