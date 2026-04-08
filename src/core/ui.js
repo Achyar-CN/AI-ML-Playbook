@@ -810,26 +810,26 @@ export class UIController {
   // Concise descriptions + business impact for each metric
   static METRIC_INFO = {
     // ── Train metrics ──────────────────────────────────────────────
-    loss:         { label: 'Loss (Train)',      desc: 'Error minimised on training data.',                     impact: 'Lower = better fit. Plateau = converged.' },
-    accuracy:     { label: 'Accuracy (Train)',  desc: 'Fraction correctly classified on training set.',        impact: 'High train + low test accuracy = overfitting.' },
-    recall:       { label: 'Recall',            desc: 'True positives / (True pos + False neg).',              impact: 'Critical when missing positives is costly (e.g. disease detection).' },
-    precision:    { label: 'Precision',         desc: 'True positives / (True pos + False pos).',              impact: 'Critical when false alarms are costly (spam, fraud).' },
-    f1:           { label: 'F1 (Train)',        desc: 'Harmonic mean of Precision and Recall on train set.',   impact: 'Best single metric for imbalanced datasets.' },
-    mae:          { label: 'MAE (Train)',       desc: 'Mean Absolute Error on training data.',                 impact: 'Interpretable in same units as target. Robust to outliers.' },
-    rmse:         { label: 'RMSE',              desc: 'Root Mean Squared Error — penalises large errors.',     impact: 'Sensitive to outliers. Use when large errors are especially bad.' },
-    mape:         { label: 'MAPE',              desc: 'Mean Absolute Percentage Error.',                       impact: 'Scale-independent. Compare across datasets.' },
-    nmae:         { label: 'NMAE',              desc: 'Normalised MAE relative to mean target value.',         impact: 'Allows comparison when target scale varies.' },
-    // ── Test metrics (classification — mirrors train set) ──────────
-    testLoss:      { label: 'Loss (Test)',       desc: 'Error on held-out test set.',                            impact: 'Gap vs train loss = overfitting signal. High gap = bad generalisation.' },
-    testAccuracy:  { label: 'Accuracy (Test)',   desc: 'Fraction correctly classified on test set.',             impact: 'Most reliable accuracy estimate. Match to train accuracy to check overfit.' },
-    testRecall:    { label: 'Recall (Test)',     desc: 'True positives / (TP + FN) on test set.',                impact: 'Generalisation of recall. Low vs train = model memorised positives.' },
-    testPrecision: { label: 'Precision (Test)',  desc: 'True positives / (TP + FP) on test set.',                impact: 'Generalisation of precision. Large drop = model over-predicts positives.' },
-    testF1:        { label: 'F1 (Test)',         desc: 'Harmonic mean of precision and recall on test set.',     impact: 'Best test summary for imbalanced data. Compare to F1 (Train).' },
-    // ── Test metrics (regression — mirrors train set) ───────────────
-    testMAE:       { label: 'MAE (Test)',        desc: 'Mean Absolute Error on held-out test set.',              impact: 'Generalisation quality. Large gap vs train MAE = overfitting.' },
-    testRMSE:      { label: 'RMSE (Test)',       desc: 'Root Mean Squared Error on held-out test set.',          impact: 'Large test RMSE vs train = outlier sensitivity or overfitting.' },
-    testMAPE:      { label: 'MAPE (Test)',       desc: 'Mean Absolute Percentage Error on held-out test set.',   impact: 'Scale-independent generalisation check.' },
-    testNMAE:      { label: 'NMAE (Test)',       desc: 'Normalised MAE on held-out test set.',                   impact: 'Comparable across different target scales.' },
+    loss:         { label: 'Loss',      desc: 'Error minimised on training data.',                     impact: 'Lower = better fit. Plateau = converged.' },
+    accuracy:     { label: 'Accuracy',  desc: 'Fraction correctly classified on training set.',        impact: 'High train + low test accuracy = overfitting.' },
+    recall:       { label: 'Recall',    desc: 'True positives / (True pos + False neg).',              impact: 'Critical when missing positives is costly (e.g. disease detection).' },
+    precision:    { label: 'Precision', desc: 'True positives / (True pos + False pos).',              impact: 'Critical when false alarms are costly (spam, fraud).' },
+    f1:           { label: 'F1',        desc: 'Harmonic mean of Precision and Recall on train set.',   impact: 'Best single metric for imbalanced datasets.' },
+    mae:          { label: 'MAE',       desc: 'Mean Absolute Error on training data.',                 impact: 'Interpretable in same units as target. Robust to outliers.' },
+    rmse:         { label: 'RMSE',      desc: 'Root Mean Squared Error — penalises large errors.',     impact: 'Sensitive to outliers. Use when large errors are especially bad.' },
+    mape:         { label: 'MAPE',      desc: 'Mean Absolute Percentage Error.',                       impact: 'Scale-independent. Compare across datasets.' },
+    nmae:         { label: 'NMAE',      desc: 'Normalised MAE relative to mean target value.',         impact: 'Allows comparison when target scale varies.' },
+    // ── Test metrics (classification) ──────────────────────────────
+    testLoss:      { label: 'Loss',      desc: 'Error on held-out test set.',                           impact: 'Gap vs train loss = overfitting signal. High gap = bad generalisation.' },
+    testAccuracy:  { label: 'Accuracy',  desc: 'Fraction correctly classified on test set.',            impact: 'Most reliable accuracy estimate. Match to train accuracy to check overfit.' },
+    testRecall:    { label: 'Recall',    desc: 'True positives / (TP + FN) on test set.',               impact: 'Generalisation of recall. Low vs train = model memorised positives.' },
+    testPrecision: { label: 'Precision', desc: 'True positives / (TP + FP) on test set.',               impact: 'Generalisation of precision. Large drop = model over-predicts positives.' },
+    testF1:        { label: 'F1',        desc: 'Harmonic mean of precision and recall on test set.',    impact: 'Best test summary for imbalanced data. Compare to F1 (Train).' },
+    // ── Test metrics (regression) ───────────────────────────────────
+    testMAE:       { label: 'MAE',       desc: 'Mean Absolute Error on held-out test set.',             impact: 'Generalisation quality. Large gap vs train MAE = overfitting.' },
+    testRMSE:      { label: 'RMSE',      desc: 'Root Mean Squared Error on held-out test set.',         impact: 'Large test RMSE vs train = outlier sensitivity or overfitting.' },
+    testMAPE:      { label: 'MAPE',      desc: 'Mean Absolute Percentage Error on held-out test set.',  impact: 'Scale-independent generalisation check.' },
+    testNMAE:      { label: 'NMAE',      desc: 'Normalised MAE on held-out test set.',                  impact: 'Comparable across different target scales.' },
   };
 
   setupMetrics(sim) {
