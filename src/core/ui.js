@@ -45,7 +45,7 @@ export class UIController {
     if (!text) return null;
     const icon = document.createElement('span');
     icon.className  = 'tip-icon';
-    icon.textContent = '?';
+    icon.textContent = 'i';
     icon.tabIndex   = 0;
 
     const show = (e) => {
@@ -424,9 +424,13 @@ export class UIController {
     const row = document.createElement('div');
     row.className = 'toggle-row';
 
+    const lblWrap = document.createElement('div');
+    lblWrap.style.cssText = 'display:flex;align-items:center;gap:5px;';
     const lbl = document.createElement('label');
     lbl.textContent = 'Show Test Points';
     lbl.setAttribute('for', 'show-test-toggle');
+    lblWrap.appendChild(lbl);
+    // No tooltip for Show Test Points — label is self-explanatory
 
     const inp = document.createElement('input');
     inp.id       = 'show-test-toggle';
@@ -442,15 +446,9 @@ export class UIController {
       }
     });
 
-    row.appendChild(lbl);
+    row.appendChild(lblWrap);
     row.appendChild(inp);
     wrapper.appendChild(row);
-
-    const desc = document.createElement('p');
-    desc.className = 'param-desc';
-    desc.textContent = 'Show held-out test points (□/◇) on the visualization canvas.';
-    wrapper.appendChild(desc);
-
     return wrapper;
   }
 
@@ -892,6 +890,9 @@ export class UIController {
       name.className = 'metric-name';
       name.textContent = info.label.toUpperCase();
       nameWrap.appendChild(name);
+      const tipText = [info.desc, info.impact].filter(Boolean).join(' — ');
+      const tip = this._buildTooltipIcon(tipText);
+      if (tip) nameWrap.appendChild(tip);
       const lastVal = document.createElement('span');
       lastVal.className = 'metric-last-value';
       lastVal.setAttribute('data-metric-val', key);
@@ -899,14 +900,6 @@ export class UIController {
       header.appendChild(nameWrap);
       header.appendChild(lastVal);
       card.appendChild(header);
-
-      if (info.desc) {
-        const descWrap = document.createElement('div');
-        descWrap.className = 'metric-desc';
-        descWrap.innerHTML = `<span class="metric-desc-text">${info.desc}</span>`
-          + (info.impact ? ` <span class="metric-impact">${info.impact}</span>` : '');
-        card.appendChild(descWrap);
-      }
 
       const canvas = document.createElement('canvas');
       canvas.setAttribute('data-metric', key);
