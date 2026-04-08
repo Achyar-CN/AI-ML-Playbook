@@ -220,16 +220,16 @@ html, body { height: 100%; font-family: var(--font); background: var(--bg); colo
 }
 
 /* ── Param controls ── */
-.param-box { display: flex; flex-direction: column; gap: 18px; }
-.param-field { display: flex; flex-direction: column; gap: 7px; }
+.param-box { display: flex; flex-direction: column; gap: 22px; }
+.param-field { display: flex; flex-direction: column; gap: 6px; }
 .param-header { display: flex; justify-content: space-between; align-items: center; }
 .param-header label {
-  font-size: .8rem; font-weight: 600; color: var(--text-primary); cursor: default;
+  font-size: .74rem; font-weight: 600; color: var(--text-primary); cursor: default;
 }
 .param-value-display {
-  font-size: .76rem; font-weight: 800; color: var(--blue-600);
+  font-size: .72rem; font-weight: 700; color: var(--blue-600);
   background: var(--blue-50); border: 1px solid var(--blue-200);
-  padding: 1px 8px; border-radius: 10px; min-width: 40px; text-align: center;
+  padding: 1px 8px; border-radius: 10px; min-width: 38px; text-align: center;
 }
 
 input[type="range"].param-slider {
@@ -238,7 +238,7 @@ input[type="range"].param-slider {
 }
 
 .toggle-row { display: flex; align-items: center; justify-content: space-between; }
-.toggle-row label { font-size: .8rem; font-weight: 600; color: var(--text-primary); }
+.toggle-row label { font-size: .74rem; font-weight: 600; color: var(--text-primary); }
 input[type="checkbox"].toggle {
   width: 34px; height: 19px; appearance: none; background: #cbd5e1;
   border-radius: 10px; cursor: pointer; position: relative; transition: background .2s; flex-shrink: 0;
@@ -407,7 +407,7 @@ input[type="checkbox"].toggle:checked::before { left: 17px; }
 .data-always-section {
   margin-top: 14px; padding-top: 12px;
   border-top: 1px solid var(--border-subtle);
-  display: flex; flex-direction: column; gap: 10px;
+  display: flex; flex-direction: column; gap: 22px;
 }
 
 /* ── Preset buttons ── */
