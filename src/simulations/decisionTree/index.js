@@ -5,6 +5,7 @@ export class DecisionTreeSimulation extends BaseSimulation {
     this.history = [];
     this.epoch   = 0;
     this.tree    = null;
+    this._3d     = this._is3DClass;
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateClassDataset(datasetType || 'xor', nPoints, seed, noiseLevel ?? 0.08);
   }
@@ -32,13 +33,14 @@ export class DecisionTreeSimulation extends BaseSimulation {
   _findBestSplit(data) {
     const parentImp = this._impurity(data);
     let bestGain = 1e-10, bestSplit = null;
+    const feats = this._3d ? ['x','y','z'] : ['x','y'];
 
-    for (const feature of ['x','y']) {
-      const vals = [...new Set(data.map(pt => pt[feature]))].sort((a,b) => a-b);
+    for (const feature of feats) {
+      const vals = [...new Set(data.map(pt => pt[feature] ?? 0))].sort((a,b) => a-b);
       for (let i = 0; i < vals.length-1; i++) {
         const threshold = (vals[i]+vals[i+1])/2;
-        const left  = data.filter(pt => pt[feature] <= threshold);
-        const right = data.filter(pt => pt[feature] >  threshold);
+        const left  = data.filter(pt => (pt[feature] ?? 0) <= threshold);
+        const right = data.filter(pt => (pt[feature] ?? 0) >  threshold);
         if (left.length===0 || right.length===0) continue;
         const wImp = (left.length/data.length)*this._impurity(left)
                    + (right.length/data.length)*this._impurity(right);
@@ -63,15 +65,15 @@ export class DecisionTreeSimulation extends BaseSimulation {
     };
   }
 
-  _predictNode(node, x, y) {
+  _predictNode(node, x, y, z) {
     if (!node || !node.feature) return node ? node.label : 0;
-    const val = node.feature==='x' ? x : y;
+    const val = node.feature==='x' ? x : node.feature==='y' ? y : (z ?? 0);
     return val <= node.threshold
-      ? this._predictNode(node.left, x, y)
-      : this._predictNode(node.right, x, y);
+      ? this._predictNode(node.left, x, y, z)
+      : this._predictNode(node.right, x, y, z);
   }
 
-  predict(x, y) { return this.tree ? this._predictNode(this.tree, x, y) : 0; }
+  predict(x, y, z) { return this.tree ? this._predictNode(this.tree, x, y, z) : 0; }
 
   _countNodes(node) {
     if (!node || !node.feature) return 1;
@@ -161,14 +163,14 @@ export class DecisionTreeSimulation extends BaseSimulation {
 
     if (m) {
       const labels = this.points.map(pt => pt.label);
-      const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+      const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
       this.drawConfusionMatrix(this.ctx, labels, preds, 10, H-142, 58);
     }
   }
 
   computeMetrics() {
     const labels = this.points.map(pt => pt.label);
-    const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+    const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
     return this.computeClassificationMetrics(labels, preds);
   }
 }

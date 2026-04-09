@@ -12,20 +12,20 @@ function majority(data) {
   return c1 * 2 >= data.length ? 1 : 0;
 }
 
-function buildClassTree(data, depth, maxDepth, minLeaf, rng) {
+function buildClassTree(data, depth, maxDepth, minLeaf, rng, feats) {
   if (!data.length) return { label: 0 };
   const maj = majority(data);
   if (depth >= maxDepth || data.length < minLeaf || gini(data) < 1e-6) return { label: maj };
 
-  const feature = rng() > 0.5 ? 'x' : 'y'; // random feature at each node
-  const vals = [...new Set(data.map(pt => pt[feature]))].sort((a, b) => a - b);
+  const feature = feats[Math.floor(rng() * feats.length)]; // random feature
+  const vals = [...new Set(data.map(pt => pt[feature] ?? 0))].sort((a, b) => a - b);
   let bestGain = 0, best = null;
   const pG = gini(data);
 
   for (let i = 0; i < vals.length - 1; i++) {
     const t = (vals[i] + vals[i + 1]) / 2;
-    const L = data.filter(pt => pt[feature] <= t);
-    const R = data.filter(pt => pt[feature] > t);
+    const L = data.filter(pt => (pt[feature] ?? 0) <= t);
+    const R = data.filter(pt => (pt[feature] ?? 0) > t);
     if (!L.length || !R.length) continue;
     const wG = (L.length * gini(L) + R.length * gini(R)) / data.length;
     if (pG - wG > bestGain) { bestGain = pG - wG; best = { feature, t, L, R }; }
@@ -33,17 +33,17 @@ function buildClassTree(data, depth, maxDepth, minLeaf, rng) {
   if (!best) return { label: maj };
   return {
     feature: best.feature, threshold: best.t,
-    left:  buildClassTree(best.L, depth + 1, maxDepth, minLeaf, rng),
-    right: buildClassTree(best.R, depth + 1, maxDepth, minLeaf, rng),
+    left:  buildClassTree(best.L, depth + 1, maxDepth, minLeaf, rng, feats),
+    right: buildClassTree(best.R, depth + 1, maxDepth, minLeaf, rng, feats),
   };
 }
 
-function predictClassTree(node, x, y) {
+function predictClassTree(node, x, y, z) {
   if (node.label !== undefined) return node.label;
-  const v = node.feature === 'x' ? x : y;
+  const v = node.feature === 'x' ? x : node.feature === 'y' ? y : (z ?? 0);
   return v <= node.threshold
-    ? predictClassTree(node.left, x, y)
-    : predictClassTree(node.right, x, y);
+    ? predictClassTree(node.left, x, y, z)
+    : predictClassTree(node.right, x, y, z);
 }
 
 function mseFn(data) {
@@ -94,14 +94,15 @@ export class RandomForestClassificationSimulation extends BaseSimulation {
     this.epoch   = 0;
     this.forest  = [];
     this._grid   = null;
+    this._3d     = this._is3DClass;
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateClassDataset(datasetType || 'moons', nPoints, seed, noiseLevel ?? 0.08);
     this._rng = this.seededRandom((seed || 42) + 1337);
   }
 
-  predict(x, y) {
+  predict(x, y, z) {
     if (!this.forest.length) return 0;
-    const votes = this.forest.reduce((s, tree) => s + predictClassTree(tree, x, y), 0);
+    const votes = this.forest.reduce((s, tree) => s + predictClassTree(tree, x, y, z), 0);
     return votes * 2 >= this.forest.length ? 1 : 0;
   }
 
@@ -111,16 +112,17 @@ export class RandomForestClassificationSimulation extends BaseSimulation {
     this.epoch++;
     const n = this.points.length;
     const bootstrap = Array.from({ length: n }, () => this.points[Math.floor(this._rng() * n)]);
+    const feats = this._3d ? ['x', 'y', 'z'] : ['x', 'y'];
     this.forest.push(
-      buildClassTree(bootstrap, 0, this.params.maxDepth || 4, this.params.minLeafSize || 3, this._rng)
+      buildClassTree(bootstrap, 0, this.params.maxDepth || 4, this.params.minLeafSize || 3, this._rng, feats)
     );
-    this._grid = null; // invalidate boundary cache
+    this._grid = null;
     this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
   }
 
   computeMetrics() {
     const labels = this.points.map(pt => pt.label);
-    const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+    const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
     return this.computeClassificationMetrics(labels, preds);
   }
 
@@ -175,7 +177,7 @@ export class RandomForestClassificationSimulation extends BaseSimulation {
 
     if (m) {
       const labels = this.points.map(pt => pt.label);
-      const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+      const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
       this.drawConfusionMatrix(this.ctx, labels, preds, 10, H - 142, 58);
     }
   }

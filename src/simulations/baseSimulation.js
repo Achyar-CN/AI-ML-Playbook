@@ -35,7 +35,8 @@ export class BaseSimulation {
 
   // Getter: true when CSV is 3D regression (2 features + target).
   // Subclasses use this without needing to import dataStore directly.
-  get _is3DReg() { return dataStore.is3D && dataStore.type === 'regression'; }
+  get _is3DReg()   { return dataStore.is3D && dataStore.type === 'regression'; }
+  get _is3DClass() { return dataStore.is3D && dataStore.type === 'classification'; }
 
   // ── Public render entry-point called by SimulationManager ───────
   renderWithOverlays() {
@@ -79,7 +80,9 @@ export class BaseSimulation {
 
     if (this.taskType === 'classification') {
       const labels = this.testPoints.map(pt => pt.label === 1 ? 1 : 0);
-      const preds  = this.testPoints.map(pt => this.predict(pt.x, pt.y) === 1 ? 1 : 0);
+      const preds  = this._is3DClass
+        ? this.testPoints.map(pt => this.predict(pt.x, pt.y, pt.z) === 1 ? 1 : 0)
+        : this.testPoints.map(pt => this.predict(pt.x, pt.y) === 1 ? 1 : 0);
       const m = this.computeClassificationMetrics(labels, preds);
       Object.assign(last, {
         testLoss: m.loss, testAccuracy: m.accuracy,
@@ -328,29 +331,31 @@ export class BaseSimulation {
 
     const hasTrained = typeof this.predict === 'function' && this.epoch > 0;
 
-    // ── Classification: decision boundary on back wall (z = -1) ───
-    // The back wall shows the 2D boundary in f1-f2 space (predict(f1, f2)).
+    // ── Classification: volumetric colored region (3D voxel cloud) ──
+    // Predict class at each (fx, fy, fz) in a 10×10×10 grid, draw
+    // translucent colored spheres sorted far→near (painter's algorithm).
+    // Cache by epoch so rotation doesn't retrigger predictions.
     if (isClass && hasTrained) {
-      const G    = 22;
-      const step = 2 / G;
-      for (let gx = 0; gx < G; gx++) {
-        for (let gy = 0; gy < G; gy++) {
-          const fx = -1 + gx * step;
-          const fy = -1 + gy * step;
-          const pred = this.predict(fx, fy);
-          const col  = pred === 1 ? 'rgba(29,78,216,0.22)' : 'rgba(220,38,38,0.22)';
-          // Draw quad on back wall: z = -1, varying x (f1) and y (f2)
-          const c0 = project(fx,        fy,        -1);
-          const c1 = project(fx + step,  fy,        -1);
-          const c2 = project(fx + step,  fy + step,  -1);
-          const c3 = project(fx,         fy + step,  -1);
-          ctx.fillStyle = col;
-          ctx.beginPath();
-          ctx.moveTo(c0.sx, c0.sy); ctx.lineTo(c1.sx, c1.sy);
-          ctx.lineTo(c2.sx, c2.sy); ctx.lineTo(c3.sx, c3.sy);
-          ctx.closePath(); ctx.fill();
-        }
+      if (this._voxCacheEpoch !== this.epoch) {
+        const G = 10, step = 2 / G;
+        this._voxCache = [];
+        for (let gx = 0; gx < G; gx++)
+          for (let gy = 0; gy < G; gy++)
+            for (let gz = 0; gz < G; gz++) {
+              const fx = -1 + (gx + 0.5) * step;
+              const fy = -1 + (gy + 0.5) * step;
+              const fz = -1 + (gz + 0.5) * step;
+              this._voxCache.push({ fx, fy, fz, pred: this.predict(fx, fy, fz) });
+            }
+        this._voxCacheEpoch = this.epoch;
       }
+      const voxR = scale * (2 / 10) * 0.38;
+      const voxels = this._voxCache.map(v => ({ ...v, ...project(v.fx, v.fy, v.fz) }));
+      voxels.sort((a, b) => a.depth - b.depth);
+      voxels.forEach(({ sx, sy, pred }) => {
+        ctx.fillStyle = pred === 1 ? 'rgba(29,78,216,0.10)' : 'rgba(220,38,38,0.10)';
+        ctx.beginPath(); ctx.arc(sx, sy, voxR, 0, Math.PI * 2); ctx.fill();
+      });
     }
 
     // ── Regression: prediction surface mesh ────────────────────────
@@ -484,7 +489,7 @@ export class BaseSimulation {
     } else {
       ctx.fillText('3D  •  Trains on ' +
         (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.yLabel || 'x₂') +
-        '  (boundary on back wall)', 14, 22);
+        ' & ' + (dataStore.zLabel || 'x₃') + '  (volumetric boundary)', 14, 22);
     }
     ctx.fillStyle = dark ? '#64748b' : '#94a3b8';
     ctx.font = '10px sans-serif';

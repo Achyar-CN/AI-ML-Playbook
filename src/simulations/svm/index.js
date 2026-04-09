@@ -1,7 +1,13 @@
 import { BaseSimulation } from '../baseSimulation.js';
 
 // ── Feature maps ──────────────────────────────────────────────────
-function phiClass(x, y, kernel) {
+function phiClass(x, y, kernel, is3D, z) {
+  if (is3D) {
+    const zv = z ?? 0;
+    return kernel === 'poly2'
+      ? [1, x, y, zv, x*x, y*y, zv*zv, x*y, x*zv, y*zv]  // 10 features
+      : [1, x, y, zv];  // 4 features
+  }
   return kernel === 'poly2' ? [1, x, y, x * x, y * y, x * y] : [1, x, y];
 }
 function phiReg(x, kernel) {
@@ -15,13 +21,16 @@ export class SVMClassificationSimulation extends BaseSimulation {
     this.history = [];
     this.epoch   = 0;
     this._grid   = null;
+    this._3d     = this._is3DClass;
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateClassDataset(datasetType || 'linear', nPoints, seed, noiseLevel ?? 0.08);
-    this.w = new Array(this.params.kernel === 'poly2' ? 6 : 3).fill(0);
+    const kernel = this.params.kernel || 'linear';
+    const nW = this._3d ? (kernel === 'poly2' ? 10 : 4) : (kernel === 'poly2' ? 6 : 3);
+    this.w = new Array(nW).fill(0);
   }
 
-  _score(x, y) { return dot(this.w, phiClass(x, y, this.params.kernel || 'linear')); }
-  predict(x, y) { return this._score(x, y) >= 0 ? 1 : 0; }
+  _score(x, y, z) { return dot(this.w, phiClass(x, y, this.params.kernel || 'linear', this._3d, z)); }
+  predict(x, y, z) { return this._score(x, y, z) >= 0 ? 1 : 0; }
 
   step() {
     const epochs = this.params.epochs || 200;
@@ -33,25 +42,24 @@ export class SVMClassificationSimulation extends BaseSimulation {
     const kernel = this.params.kernel || 'linear';
     const grad = new Array(this.w.length).fill(0);
 
-    // Weight decay (L2 on non-bias terms)
     for (let j = 1; j < this.w.length; j++) grad[j] += this.w[j] / n;
 
-    this.points.forEach(({ x, y: vy, label }) => {
+    this.points.forEach(({ x, y: vy, z, label }) => {
       const yi  = label === 1 ? 1 : -1;
-      const phi = phiClass(x, vy, kernel);
+      const phi = phiClass(x, vy, kernel, this._3d, z);
       if (yi * dot(this.w, phi) < 1) {
         for (let j = 0; j < phi.length; j++) grad[j] -= (C / n) * yi * phi[j];
       }
     });
 
     for (let j = 0; j < this.w.length; j++) this.w[j] -= lr * grad[j];
-    this._grid = null; // invalidate boundary cache
+    this._grid = null;
     this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
   }
 
   computeMetrics() {
     const labels = this.points.map(pt => pt.label);
-    const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+    const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
     return this.computeClassificationMetrics(labels, preds);
   }
 
@@ -106,10 +114,10 @@ export class SVMClassificationSimulation extends BaseSimulation {
     this.ctx.fillStyle = '#fff'; this.ctx.fillRect(0, 0, W, H);
     this._drawBoundary(W, H);
 
-    this.points.forEach(({ x, y, label }) => {
+    this.points.forEach(({ x, y, z, label }) => {
       const px = ((x + 1) / 2) * W, py = H - ((y + 1) / 2) * H;
       const yi     = label === 1 ? 1 : -1;
-      const margin = yi * this._score(x, y);
+      const margin = yi * this._score(x, y, z);
       this.ctx.beginPath(); this.ctx.arc(px, py, 4.5, 0, Math.PI * 2);
       this.ctx.fillStyle   = label === 1 ? '#1565c0' : '#c62828'; this.ctx.fill();
       this.ctx.strokeStyle = margin < 1 ? '#f59e0b' : '#fff';
@@ -134,7 +142,7 @@ export class SVMClassificationSimulation extends BaseSimulation {
 
     if (m) {
       const labels = this.points.map(pt => pt.label);
-      const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+      const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
       this.drawConfusionMatrix(this.ctx, labels, preds, 10, H - 142, 58);
     }
   }

@@ -20,12 +20,12 @@ function buildHist(recs, feat) {
   return { bins, min, binW };
 }
 
-function bestHistSplit(recs, lambda, gamma) {
+function bestHistSplit(recs, lambda, gamma, feats = ['x', 'y']) {
   const G = recs.reduce((s, r) => s + r.g, 0);
   const H = recs.reduce((s, r) => s + r.h, 0);
   let bestGain = gamma, bestSplit = null;
 
-  for (const feat of ['x', 'y']) {
+  for (const feat of feats) {
     const hist = buildHist(recs, feat);
     if (!hist) continue;
     const { bins, min, binW } = hist;
@@ -45,7 +45,7 @@ function bestHistSplit(recs, lambda, gamma) {
 }
 
 // Leaf-wise (best-first) tree building up to maxLeaves leaves.
-function lgbmBuildTree(recs, maxLeaves, lambda, gamma) {
+function lgbmBuildTree(recs, maxLeaves, lambda, gamma, feats = ['x', 'y']) {
   // Represent the tree as a list of {feature,threshold,leftId,rightId} internal nodes
   // plus leaves identified by id. Root has id=0.
   const leaves = [{ id: 0, recs }];
@@ -56,7 +56,7 @@ function lgbmBuildTree(recs, maxLeaves, lambda, gamma) {
     let bestLeafIdx = -1, bestSplit = null, bestGain = -Infinity;
     leaves.forEach((leaf, idx) => {
       if (leaf.recs.length < 4) return;
-      const split = bestHistSplit(leaf.recs, lambda, gamma);
+      const split = bestHistSplit(leaf.recs, lambda, gamma, feats);
       if (split && split.gain > bestGain) {
         bestGain = split.gain; bestLeafIdx = idx; bestSplit = split;
       }
@@ -98,10 +98,10 @@ function lgbmBuildTree(recs, maxLeaves, lambda, gamma) {
   return buildTree(0);
 }
 
-function lgbmPredict(node, x, y) {
+function lgbmPredict(node, x, y, z) {
   if (node.value !== undefined) return node.value;
-  const v = node.feature === 'x' ? x : y;
-  return v <= node.threshold ? lgbmPredict(node.left, x, y) : lgbmPredict(node.right, x, y);
+  const v = node.feature === 'x' ? x : node.feature === 'y' ? y : (z ?? 0);
+  return v <= node.threshold ? lgbmPredict(node.left, x, y, z) : lgbmPredict(node.right, x, y, z);
 }
 
 function sigmoid(x) { return 1 / (1 + Math.exp(-Math.max(-20, Math.min(20, x)))); }
@@ -113,31 +113,33 @@ export class LightGBMClassificationSimulation extends BaseSimulation {
     this.epoch   = 0;
     this.trees   = [];
     this._grid   = null;
+    this._3d     = this._is3DClass;
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateClassDataset(datasetType || 'spiral', nPoints, seed, noiseLevel ?? 0.08);
     this._F = this.points.map(() => 0);
   }
 
-  predict(x, y) {
-    const logit = this.trees.reduce((s, t) => s + (this.params.learningRate || 0.1) * lgbmPredict(t, x, y), 0);
+  predict(x, y, z) {
+    const logit = this.trees.reduce((s, t) => s + (this.params.learningRate || 0.1) * lgbmPredict(t, x, y, z), 0);
     return sigmoid(logit) >= 0.5 ? 1 : 0;
   }
 
   step() {
     if (this.epoch >= (this.params.nRounds || 30)) return;
-    const lr       = this.params.learningRate || 0.1;
-    const lambda   = this.params.lambda || 1;
-    const gamma    = this.params.gamma || 0;
+    const lr        = this.params.learningRate || 0.1;
+    const lambda    = this.params.lambda || 1;
+    const gamma     = this.params.gamma || 0;
     const maxLeaves = this.params.maxLeaves || 8;
+    const feats     = this._3d ? ['x', 'y', 'z'] : ['x', 'y'];
 
     const recs = this.points.map((pt, i) => {
       const p = sigmoid(this._F[i]);
       return { pt, g: p - pt.label, h: p * (1 - p) };
     });
 
-    const tree = lgbmBuildTree(recs, maxLeaves, lambda, gamma);
+    const tree = lgbmBuildTree(recs, maxLeaves, lambda, gamma, feats);
     this.trees.push(tree);
-    this.points.forEach((pt, i) => { this._F[i] += lr * lgbmPredict(tree, pt.x, pt.y); });
+    this.points.forEach((pt, i) => { this._F[i] += lr * lgbmPredict(tree, pt.x, pt.y, pt.z); });
     this._grid = null;
     this.epoch++;
     this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
@@ -145,7 +147,7 @@ export class LightGBMClassificationSimulation extends BaseSimulation {
 
   computeMetrics() {
     const labels = this.points.map(pt => pt.label);
-    const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+    const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
     return this.computeClassificationMetrics(labels, preds);
   }
 
@@ -196,7 +198,7 @@ export class LightGBMClassificationSimulation extends BaseSimulation {
     this.ctx.restore();
     if (m) {
       const labels = this.points.map(pt => pt.label);
-      const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+      const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
       this.drawConfusionMatrix(this.ctx, labels, preds, 10, H - 142, 58);
     }
   }
@@ -217,7 +219,8 @@ export class LightGBMRegressionSimulation extends BaseSimulation {
 
   predict(x, z) {
     const lr = this.params.learningRate || 0.1;
-    return this._F0 + this.trees.reduce((s, t) => s + lr * lgbmPredict(t, x, this._3d ? (z ?? 0) : 0), 0);
+    // Regression: x=f1, second feature stored as z → passed as y arg to lgbmPredict
+    return this._F0 + this.trees.reduce((s, t) => s + lr * lgbmPredict(t, x, this._3d ? (z ?? 0) : 0, 0), 0);
   }
 
   step() {

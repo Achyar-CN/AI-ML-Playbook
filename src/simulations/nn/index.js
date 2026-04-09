@@ -17,29 +17,34 @@ export class NNSimulation extends BaseSimulation {
   setup() {
     this.history = [];
     this.epoch   = 0;
+    this._3d     = this._is3DClass;
     const { nPoints, seed, noiseLevel, datasetType, hiddenUnits } = this.params;
-    const H = hiddenUnits || 6;
+    const H   = hiddenUnits || 6;
+    const nIn = this._3d ? 3 : 2;
 
     this.points = this.generateClassDataset(datasetType || 'circle', nPoints, seed, noiseLevel ?? 0.08);
 
-    // Xavier-ish init
-    this.w1 = Array.from({ length: H }, (_, i) => [
-      this.randomBetween(-1, 1, seed+100+i*3),
-      this.randomBetween(-1, 1, seed+101+i*3),
-      this.randomBetween(-0.1, 0.1, seed+102+i*3), // bias
-    ]);
+    // Xavier-ish init: nIn weights + 1 bias per hidden neuron
+    this.w1 = Array.from({ length: H }, (_, i) =>
+      Array.from({ length: nIn + 1 }, (__, j) =>
+        this.randomBetween(j < nIn ? -1 : -0.1, j < nIn ? 1 : 0.1, seed + 100 + i * (nIn+1) + j)
+      )
+    );
     this.w2 = Array.from({ length: H+1 }, (_, i) => this.randomBetween(-1, 1, seed+200+i));
   }
 
   reset() { this.setup(); }
 
-  forward(x, y) {
-    const act = this.params.activation || 'tanh';
-    const hiddenIn = this.w1.map(ws => ws[0]*x + ws[1]*y + ws[2]);
-    const hidden   = hiddenIn.map(h => applyAct(h, act));
-    const body     = [...hidden, 1]; // +bias
-    const outIn    = this.w2.reduce((s, w, i) => s + w*body[i], 0);
-    const output   = sigmoid(outIn);
+  forward(x, y, z) {
+    const act  = this.params.activation || 'tanh';
+    const zv   = this._3d ? (z ?? 0) : undefined;
+    const hiddenIn = this.w1.map(ws =>
+      this._3d ? ws[0]*x + ws[1]*y + ws[2]*zv + ws[3] : ws[0]*x + ws[1]*y + ws[2]
+    );
+    const hidden = hiddenIn.map(h => applyAct(h, act));
+    const body   = [...hidden, 1];
+    const outIn  = this.w2.reduce((s, w, i) => s + w*body[i], 0);
+    const output = sigmoid(outIn);
     return { hidden, hiddenIn, output, body };
   }
 
@@ -51,20 +56,23 @@ export class NNSimulation extends BaseSimulation {
     const H   = this.w1.length;
 
     this.points.forEach(pt => {
-      const { hiddenIn, output, body } = this.forward(pt.x, pt.y);
-      const eOut   = output - pt.label;
-      const gOut   = eOut * (output*(1-output)); // sigmoid deriv
+      const { hiddenIn, output, body } = this.forward(pt.x, pt.y, pt.z);
+      const eOut = output - pt.label;
+      const gOut = eOut * (output*(1-output));
 
-      // w2 update (with L2)
       for (let i = 0; i < this.w2.length; i++) {
         this.w2[i] -= lr * (gOut * body[i] + l2 * this.w2[i]);
       }
-      // w1 backprop
       for (let j = 0; j < H; j++) {
         const gHid = gOut * this.w2[j] * actDeriv(hiddenIn[j], act);
-        this.w1[j][0] -= lr * (gHid * pt.x + l2 * this.w1[j][0]);
-        this.w1[j][1] -= lr * (gHid * pt.y + l2 * this.w1[j][1]);
-        this.w1[j][2] -= lr * gHid;
+        this.w1[j][0] -= lr * (gHid * pt.x  + l2 * this.w1[j][0]);
+        this.w1[j][1] -= lr * (gHid * pt.y  + l2 * this.w1[j][1]);
+        if (this._3d) {
+          this.w1[j][2] -= lr * (gHid * (pt.z ?? 0) + l2 * this.w1[j][2]);
+          this.w1[j][3] -= lr * gHid;
+        } else {
+          this.w1[j][2] -= lr * gHid;
+        }
       }
     });
 
@@ -72,7 +80,7 @@ export class NNSimulation extends BaseSimulation {
     this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
   }
 
-  predict(x, y) { return this.forward(x, y).output >= 0.5 ? 1 : 0; }
+  predict(x, y, z) { return this.forward(x, y, z).output >= 0.5 ? 1 : 0; }
 
   // Network weight diagram (top-right panel)
   _drawWeightDiagram(panelX, panelY, panelW, panelH) {
@@ -88,19 +96,20 @@ export class NNSimulation extends BaseSimulation {
     ctx.fillText('Weights', panelX + panelW/2, panelY + 12);
 
     const m = 16, netW = panelW - m*2, netH = panelH - 22, top = panelY + 18;
-    const xIn = panelX + m + netW*0.1;
+    const xIn  = panelX + m + netW*0.1;
     const xHid = panelX + m + netW*0.5;
     const xOut = panelX + m + netW*0.9;
-    const inNodes  = [top + netH*0.3, top + netH*0.7];
+    const nIn  = this._3d ? 3 : 2;
+    const inNodes  = Array.from({ length: nIn }, (_, i) => top + netH * (i + 1) / (nIn + 1));
     const hidNodes = Array.from({ length: display }, (_, i) => top + (netH*(i+1))/(display+1));
     const outNode  = top + netH*0.5;
 
-    const maxW1 = Math.max(...this.w1.map(ws => Math.max(Math.abs(ws[0]), Math.abs(ws[1]))), 1e-6);
+    const maxW1 = Math.max(...this.w1.map(ws => Math.max(...ws.slice(0, nIn).map(Math.abs))), 1e-6);
     const maxW2 = Math.max(...this.w2.slice(0, H).map(w => Math.abs(w)), 1e-6);
 
     // Connections
     for (let j = 0; j < display; j++) {
-      for (let inp = 0; inp < 2; inp++) {
+      for (let inp = 0; inp < nIn; inp++) {
         const w = this.w1[j][inp];
         ctx.strokeStyle = w >= 0 ? `rgba(29,78,216,${.12+Math.abs(w)/maxW1*.6})` : `rgba(220,38,38,${.12+Math.abs(w)/maxW1*.6})`;
         ctx.lineWidth = Math.max(.5, Math.abs(w)/maxW1*2.5);
@@ -119,7 +128,8 @@ export class NNSimulation extends BaseSimulation {
       ctx.fillStyle = '#fff'; ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center';
       ctx.fillText(lbl, x, y+2.5);
     };
-    inNodes.forEach((ny, i) => drawNode(xIn, ny, '#0369a1', i===0?'x':'y'));
+    const inLabels = this._3d ? ['x','y','z'] : ['x','y'];
+    inNodes.forEach((ny, i) => drawNode(xIn, ny, '#0369a1', inLabels[i]));
     hidNodes.forEach((ny, i) => drawNode(xHid, ny, '#7c3aed', `h${i+1}`));
     drawNode(xOut, outNode, '#059669', 'out');
     if (H > 8) {
@@ -134,12 +144,12 @@ export class NNSimulation extends BaseSimulation {
     this.ctx.clearRect(0, 0, W, H);
     this.ctx.fillStyle = '#fff'; this.ctx.fillRect(0, 0, W, H);
 
-    // Decision region grid
+    // Decision region grid (2D only — 3D handled by renderWithOverlays)
     const G = 70;
     for (let gx = 0; gx < G; gx++) {
       for (let gy = 0; gy < G; gy++) {
         const x = (gx/(G-1))*2-1, y = (gy/(G-1))*2-1;
-        this.ctx.fillStyle = this.predict(x, y)===1 ? 'rgba(29,78,216,.15)' : 'rgba(220,38,38,.15)';
+        this.ctx.fillStyle = this.predict(x, y, 0)===1 ? 'rgba(29,78,216,.15)' : 'rgba(220,38,38,.15)';
         this.ctx.fillRect(gx*(W/G), H-(gy+1)*(H/G), W/G+1, H/G+1);
       }
     }
@@ -178,7 +188,7 @@ export class NNSimulation extends BaseSimulation {
 
     // Confusion matrix
     const labels = this.points.map(pt => pt.label);
-    const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+    const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
     this.drawConfusionMatrix(this.ctx, labels, preds, 10, H-142, 58);
   }
 
@@ -186,7 +196,7 @@ export class NNSimulation extends BaseSimulation {
     let lossTotal = 0;
     const labels = [], preds = [];
     this.points.forEach(pt => {
-      const { output } = this.forward(pt.x, pt.y);
+      const { output } = this.forward(pt.x, pt.y, pt.z);
       labels.push(pt.label);
       preds.push(output >= 0.5 ? 1 : 0);
       lossTotal += 0.5*(output - pt.label)**2;

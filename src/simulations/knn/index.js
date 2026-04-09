@@ -13,35 +13,37 @@ export class KNNClassificationSimulation extends BaseSimulation {
   setup() {
     this.history = [];
     this.epoch   = 0;
-    this._grid   = null; // cached decision boundary grid
+    this._grid   = null;
+    this._3d     = this._is3DClass;
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateClassDataset(datasetType || 'moons', nPoints, seed, noiseLevel ?? 0.08);
   }
 
-  _distFn() {
-    return this.params.distanceMetric === 'manhattan' ? manhattan : euclidean;
-  }
-
-  predict(x, y) {
-    const k    = Math.min(this.params.k || 5, this.points.length);
-    const dist = this._distFn();
-    const sorted = this.points
-      .map(pt => ({ d: dist(x, y, pt.x, pt.y), label: pt.label }))
-      .sort((a, b) => a.d - b.d);
+  predict(x, y, z) {
+    const k = Math.min(this.params.k || 5, this.points.length);
+    const useManhattan = this.params.distanceMetric === 'manhattan';
+    const sorted = this.points.map(pt => {
+      const dx = pt.x - x, dy = pt.y - y;
+      const dz = this._3d ? (pt.z ?? 0) - (z ?? 0) : 0;
+      const d  = useManhattan
+        ? Math.abs(dx) + Math.abs(dy) + Math.abs(dz)
+        : Math.sqrt(dx*dx + dy*dy + dz*dz);
+      return { d, label: pt.label };
+    }).sort((a, b) => a.d - b.d);
     const votes = sorted.slice(0, k).reduce((s, n) => s + n.label, 0);
     return votes * 2 >= k ? 1 : 0;
   }
 
   step() {
-    if (this.epoch >= 1) return; // lazy learner — single pass
+    if (this.epoch >= 1) return;
     this.epoch++;
-    this._grid = null; // invalidate cache
+    this._grid = null;
     this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
   }
 
   computeMetrics() {
     const labels = this.points.map(pt => pt.label);
-    const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+    const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
     return this.computeClassificationMetrics(labels, preds);
   }
 
@@ -101,7 +103,7 @@ export class KNNClassificationSimulation extends BaseSimulation {
 
     if (m) {
       const labels = this.points.map(pt => pt.label);
-      const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+      const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
       this.drawConfusionMatrix(this.ctx, labels, preds, 10, H - 142, 58);
     }
   }

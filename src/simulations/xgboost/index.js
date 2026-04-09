@@ -2,7 +2,7 @@ import { BaseSimulation } from '../baseSimulation.js';
 
 // ── Shared XGBoost tree helpers ───────────────────────────────────
 // Each record: { pt, g, h }  (pt = data point, g = gradient, h = hessian)
-function xgbBuildNode(recs, depth, maxDepth, minLeaf, lambda, gamma) {
+function xgbBuildNode(recs, depth, maxDepth, minLeaf, lambda, gamma, feats = ['x', 'y']) {
   const G = recs.reduce((s, r) => s + r.g, 0);
   const H = recs.reduce((s, r) => s + r.h, 0);
   const leafValue = -G / (H + lambda);
@@ -11,37 +11,37 @@ function xgbBuildNode(recs, depth, maxDepth, minLeaf, lambda, gamma) {
 
   let bestGain = gamma, bestSplit = null;
 
-  for (const feat of ['x', 'y']) {
-    const sorted = recs.slice().sort((a, b) => a.pt[feat] - b.pt[feat]);
+  for (const feat of feats) {
+    const sorted = recs.slice().sort((a, b) => (a.pt[feat] ?? 0) - (b.pt[feat] ?? 0));
     let GL = 0, HL = 0;
     for (let i = 0; i < sorted.length - 1; i++) {
       GL += sorted[i].g; HL += sorted[i].h;
-      if (sorted[i].pt[feat] === sorted[i + 1].pt[feat]) continue;
+      if ((sorted[i].pt[feat] ?? 0) === (sorted[i + 1].pt[feat] ?? 0)) continue;
       const GR = G - GL, HR = H - HL;
       const gain = 0.5 * (GL * GL / (HL + lambda) + GR * GR / (HR + lambda) - G * G / (H + lambda)) - gamma;
       if (gain > bestGain) {
         bestGain = gain;
-        bestSplit = { feat, threshold: (sorted[i].pt[feat] + sorted[i + 1].pt[feat]) / 2 };
+        bestSplit = { feat, threshold: ((sorted[i].pt[feat] ?? 0) + (sorted[i + 1].pt[feat] ?? 0)) / 2 };
       }
     }
   }
 
   if (!bestSplit) return { value: leafValue };
-  const L = recs.filter(r => r.pt[bestSplit.feat] <= bestSplit.threshold);
-  const R = recs.filter(r => r.pt[bestSplit.feat] >  bestSplit.threshold);
+  const L = recs.filter(r => (r.pt[bestSplit.feat] ?? 0) <= bestSplit.threshold);
+  const R = recs.filter(r => (r.pt[bestSplit.feat] ?? 0) >  bestSplit.threshold);
   if (!L.length || !R.length) return { value: leafValue };
 
   return {
     feature: bestSplit.feat, threshold: bestSplit.threshold,
-    left:  xgbBuildNode(L, depth + 1, maxDepth, minLeaf, lambda, gamma),
-    right: xgbBuildNode(R, depth + 1, maxDepth, minLeaf, lambda, gamma),
+    left:  xgbBuildNode(L, depth + 1, maxDepth, minLeaf, lambda, gamma, feats),
+    right: xgbBuildNode(R, depth + 1, maxDepth, minLeaf, lambda, gamma, feats),
   };
 }
 
-function xgbPredict(node, x, y) {
+function xgbPredict(node, x, y, z) {
   if (node.value !== undefined) return node.value;
-  const v = node.feature === 'x' ? x : y;
-  return v <= node.threshold ? xgbPredict(node.left, x, y) : xgbPredict(node.right, x, y);
+  const v = node.feature === 'x' ? x : node.feature === 'y' ? y : (z ?? 0);
+  return v <= node.threshold ? xgbPredict(node.left, x, y, z) : xgbPredict(node.right, x, y, z);
 }
 
 function sigmoid(x) { return 1 / (1 + Math.exp(-Math.max(-20, Math.min(20, x)))); }
@@ -53,19 +53,19 @@ export class XGBoostClassificationSimulation extends BaseSimulation {
     this.epoch   = 0;
     this.trees   = [];
     this._grid   = null;
+    this._3d     = this._is3DClass;
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateClassDataset(datasetType || 'moons', nPoints, seed, noiseLevel ?? 0.08);
-    // F[i] = log-odds, initialised to 0
     this._F = this.points.map(() => 0);
   }
 
-  predict(x, y) {
-    const logit = this.trees.reduce((s, t) => s + (this.params.learningRate || 0.3) * xgbPredict(t, x, y), 0);
+  predict(x, y, z) {
+    const logit = this.trees.reduce((s, t) => s + (this.params.learningRate || 0.3) * xgbPredict(t, x, y, z), 0);
     return sigmoid(logit) >= 0.5 ? 1 : 0;
   }
 
-  _score(x, y) {
-    return this.trees.reduce((s, t) => s + (this.params.learningRate || 0.3) * xgbPredict(t, x, y), 0);
+  _score(x, y, z) {
+    return this.trees.reduce((s, t) => s + (this.params.learningRate || 0.3) * xgbPredict(t, x, y, z), 0);
   }
 
   step() {
@@ -73,15 +73,16 @@ export class XGBoostClassificationSimulation extends BaseSimulation {
     const lr     = this.params.learningRate || 0.3;
     const lambda = this.params.lambda || 1;
     const gamma  = this.params.gamma || 0;
+    const feats  = this._3d ? ['x', 'y', 'z'] : ['x', 'y'];
 
     const recs = this.points.map((pt, i) => {
       const p = sigmoid(this._F[i]);
       return { pt, g: p - pt.label, h: p * (1 - p) };
     });
 
-    const tree = xgbBuildNode(recs, 0, this.params.maxDepth || 3, this.params.minLeafSize || 2, lambda, gamma);
+    const tree = xgbBuildNode(recs, 0, this.params.maxDepth || 3, this.params.minLeafSize || 2, lambda, gamma, feats);
     this.trees.push(tree);
-    this.points.forEach((pt, i) => { this._F[i] += lr * xgbPredict(tree, pt.x, pt.y); });
+    this.points.forEach((pt, i) => { this._F[i] += lr * xgbPredict(tree, pt.x, pt.y, pt.z); });
     this._grid = null;
     this.epoch++;
     this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
@@ -89,7 +90,7 @@ export class XGBoostClassificationSimulation extends BaseSimulation {
 
   computeMetrics() {
     const labels = this.points.map(pt => pt.label);
-    const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+    const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
     return this.computeClassificationMetrics(labels, preds);
   }
 
@@ -140,7 +141,7 @@ export class XGBoostClassificationSimulation extends BaseSimulation {
     this.ctx.restore();
     if (m) {
       const labels = this.points.map(pt => pt.label);
-      const preds  = this.points.map(pt => this.predict(pt.x, pt.y));
+      const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z));
       this.drawConfusionMatrix(this.ctx, labels, preds, 10, H - 142, 58);
     }
   }
@@ -161,7 +162,8 @@ export class XGBoostRegressionSimulation extends BaseSimulation {
 
   predict(x, z) {
     const lr = this.params.learningRate || 0.3;
-    return this._F0 + this.trees.reduce((s, t) => s + lr * xgbPredict(t, x, this._3d ? (z ?? 0) : 0), 0);
+    // Regression uses x=f1, y=f2(stored as z), passed as x,y args to xgbPredict
+    return this._F0 + this.trees.reduce((s, t) => s + lr * xgbPredict(t, x, this._3d ? (z ?? 0) : 0, 0), 0);
   }
 
   step() {

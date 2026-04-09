@@ -5,6 +5,7 @@ export class AdaBoostSimulation extends BaseSimulation {
     this.history = [];
     this.epoch   = 0;
     this.stumps  = [];
+    this._3d     = this._is3DClass;
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
 
     // Adaboost uses ±1 labels
@@ -13,20 +14,21 @@ export class AdaBoostSimulation extends BaseSimulation {
   }
 
   _predictStump(pt, s) {
-    const val = s.feature==='x' ? pt.x : pt.y;
+    const val = s.feature==='x' ? pt.x : s.feature==='y' ? pt.y : (pt.z ?? 0);
     return s.polarity * (val <= s.threshold ? 1 : -1);
   }
 
   _fitWeakLearner() {
     let bestErr = Infinity, bestStump = null;
-    for (const feature of ['x','y']) {
-      const vals = [...new Set(this.points.map(pt => pt[feature]))].sort((a,b)=>a-b);
+    const feats = this._3d ? ['x','y','z'] : ['x','y'];
+    for (const feature of feats) {
+      const vals = [...new Set(this.points.map(pt => pt[feature] ?? 0))].sort((a,b)=>a-b);
       for (let i = 0; i < vals.length-1; i++) {
         const threshold = (vals[i]+vals[i+1])/2;
         for (const polarity of [1,-1]) {
           let err = 0;
           this.points.forEach(pt => {
-            const val = feature==='x' ? pt.x : pt.y;
+            const val = feature==='x' ? pt.x : feature==='y' ? pt.y : (pt.z ?? 0);
             if (polarity*(val<=threshold?1:-1) !== pt.label) err += pt.weight;
           });
           if (err < bestErr) { bestErr = err; bestStump = { feature, threshold, polarity }; }
@@ -58,10 +60,10 @@ export class AdaBoostSimulation extends BaseSimulation {
     this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
   }
 
-  predict(x, y) {
+  predict(x, y, z) {
     if (this.stumps.length === 0) return 1;
     const score = this.stumps.reduce((s, st) => {
-      const val = st.feature==='x' ? x : y;
+      const val = st.feature==='x' ? x : st.feature==='y' ? y : (z ?? 0);
       return s + st.alpha * st.polarity * (val <= st.threshold ? 1 : -1);
     }, 0);
     return score >= 0 ? 1 : -1;
@@ -134,13 +136,13 @@ export class AdaBoostSimulation extends BaseSimulation {
 
     // Confusion matrix
     const labels = this.points.map(pt => pt.label===1?1:0);
-    const preds  = this.points.map(pt => this.predict(pt.x,pt.y)===1?1:0);
+    const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z)===1?1:0);
     this.drawConfusionMatrix(this.ctx, labels, preds, 10, H-142, 58);
   }
 
   computeMetrics() {
     const labels = this.points.map(pt => pt.label===1?1:0);
-    const preds  = this.points.map(pt => this.predict(pt.x,pt.y)===1?1:0);
+    const preds  = this.points.map(pt => this.predict(pt.x, pt.y, pt.z)===1?1:0);
     return this.computeClassificationMetrics(labels, preds);
   }
 }
