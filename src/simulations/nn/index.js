@@ -200,29 +200,35 @@ export class NNRegressionSimulation extends BaseSimulation {
   setup() {
     this.history = [];
     this.epoch   = 0;
+    this._3d     = this._is3DReg;
     const { nPoints, seed, noiseLevel, datasetType, hiddenUnits } = this.params;
     const H = hiddenUnits || 8;
+    const nIn = this._3d ? 2 : 1;
     this.points = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
-    // 1D input: w1[j] = [w_x, bias]
-    this.w1 = Array.from({ length: H }, (_, i) => [
-      this.randomBetween(-1, 1, seed + 100 + i * 2),
-      this.randomBetween(-0.1, 0.1, seed + 101 + i * 2),
-    ]);
+    // nIn inputs + bias per hidden neuron
+    this.w1 = Array.from({ length: H }, (_, i) =>
+      Array.from({ length: nIn + 1 }, (__, j) =>
+        this.randomBetween(j < nIn ? -1 : -0.1, j < nIn ? 1 : 0.1, seed + 100 + i * (nIn + 1) + j)
+      )
+    );
     this.w2 = Array.from({ length: H + 1 }, (_, i) => this.randomBetween(-0.5, 0.5, seed + 200 + i));
   }
 
   reset() { this.setup(); }
 
-  _forward(x) {
-    const act    = this.params.activation || 'tanh';
-    const hidIn  = this.w1.map(ws => ws[0] * x + ws[1]);
+  _forward(x, z) {
+    const act   = this.params.activation || 'tanh';
+    const zv    = this._3d ? (z ?? 0) : undefined;
+    const hidIn = this.w1.map(ws =>
+      this._3d ? ws[0] * x + ws[1] * zv + ws[2] : ws[0] * x + ws[1]
+    );
     const hidden = hidIn.map(h => applyAct(h, act));
     const body   = [...hidden, 1];
-    const out    = this.w2.reduce((s, w, i) => s + w * body[i], 0); // linear output
+    const out    = this.w2.reduce((s, w, i) => s + w * body[i], 0);
     return { hidIn, hidden, out, body };
   }
 
-  predict(x) { return this._forward(x).out; }
+  predict(x, z) { return this._forward(x, z).out; }
 
   step() {
     if (this.epoch >= this.params.epochs) return;
@@ -231,14 +237,19 @@ export class NNRegressionSimulation extends BaseSimulation {
     const act = this.params.activation || 'tanh';
     const H   = this.w1.length;
     this.points.forEach(pt => {
-      const { hidIn, out, body } = this._forward(pt.x);
-      const eOut = out - pt.y; // MSE gradient
+      const { hidIn, out, body } = this._forward(pt.x, pt.z);
+      const eOut = out - pt.y;
       for (let i = 0; i < this.w2.length; i++)
         this.w2[i] -= lr * (eOut * body[i] + l2 * this.w2[i]);
       for (let j = 0; j < H; j++) {
         const gHid = eOut * this.w2[j] * actDeriv(hidIn[j], act);
         this.w1[j][0] -= lr * (gHid * pt.x + l2 * this.w1[j][0]);
-        this.w1[j][1] -= lr * gHid;
+        if (this._3d) {
+          this.w1[j][1] -= lr * (gHid * (pt.z ?? 0) + l2 * this.w1[j][1]);
+          this.w1[j][2] -= lr * gHid;
+        } else {
+          this.w1[j][1] -= lr * gHid;
+        }
       }
     });
     this.epoch++;
@@ -246,7 +257,7 @@ export class NNRegressionSimulation extends BaseSimulation {
   }
 
   computeMetrics() {
-    return this.computeRegressionMetrics(this.points.map(pt => pt.y), this.points.map(pt => this.predict(pt.x)));
+    return this.computeRegressionMetrics(this.points.map(pt => pt.y), this.points.map(pt => this.predict(pt.x, pt.z)));
   }
 
   render() {

@@ -145,12 +145,22 @@ export class SVRSimulation extends BaseSimulation {
   setup() {
     this.history = [];
     this.epoch   = 0;
+    this._3d     = this._is3DReg;
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
-    this.w = new Array(this.params.kernel === 'poly2' ? 3 : 2).fill(0);
+    const kernel = this.params.kernel || 'linear';
+    const nW = this._3d ? (kernel === 'poly2' ? 6 : 3) : (kernel === 'poly2' ? 3 : 2);
+    this.w = new Array(nW).fill(0);
   }
 
-  predict(x) { return dot(this.w, phiReg(x, this.params.kernel || 'linear')); }
+  _phi(x, z) {
+    const kernel = this.params.kernel || 'linear';
+    const zv = this._3d ? (z ?? 0) : 0;
+    if (this._3d) return kernel === 'poly2' ? [1, x, zv, x*x, zv*zv, x*zv] : [1, x, zv];
+    return kernel === 'poly2' ? [1, x, x*x] : [1, x];
+  }
+
+  predict(x, z) { return dot(this.w, this._phi(x, z)); }
 
   step() {
     const epochs = this.params.epochs || 200;
@@ -160,13 +170,12 @@ export class SVRSimulation extends BaseSimulation {
     const eps = this.params.epsilon || 0.1;
     const lr  = this.params.learningRate || 0.01;
     const n   = this.points.length;
-    const kernel = this.params.kernel || 'linear';
     const grad = new Array(this.w.length).fill(0);
 
     for (let j = 1; j < this.w.length; j++) grad[j] += this.w[j] / n;
 
-    this.points.forEach(({ x, y }) => {
-      const phi  = phiReg(x, kernel);
+    this.points.forEach(({ x, y, z }) => {
+      const phi  = this._phi(x, z);
       const err  = dot(this.w, phi) - y;
       if (err > eps) {
         for (let j = 0; j < phi.length; j++) grad[j] += (C / n) * phi[j];
@@ -181,7 +190,7 @@ export class SVRSimulation extends BaseSimulation {
 
   computeMetrics() {
     const trues = this.points.map(pt => pt.y);
-    const preds = this.points.map(pt => this.predict(pt.x));
+    const preds = this.points.map(pt => this.predict(pt.x, pt.z));
     return this.computeRegressionMetrics(trues, preds);
   }
 

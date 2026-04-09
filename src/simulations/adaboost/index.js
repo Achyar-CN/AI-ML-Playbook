@@ -152,6 +152,7 @@ export class GradientBoostingRegressionSimulation extends BaseSimulation {
     this.history = [];
     this.epoch   = 0;
     this.stumps  = [];
+    this._3d     = this._is3DReg;
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points  = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
     this._F0     = this.points.reduce((s, pt) => s + pt.y, 0) / Math.max(this.points.length, 1);
@@ -159,24 +160,30 @@ export class GradientBoostingRegressionSimulation extends BaseSimulation {
   }
 
   _fitStump(residuals) {
-    const vals = [...new Set(this.points.map(pt => pt.x))].sort((a, b) => a - b);
+    const feats = this._3d ? ['x', 'z'] : ['x'];
     let bestMse = Infinity, best = null;
-    for (let i = 0; i < vals.length - 1; i++) {
-      const t = (vals[i] + vals[i + 1]) / 2;
-      const L = [], R = [];
-      this.points.forEach((pt, idx) => (pt.x <= t ? L : R).push(residuals[idx]));
-      if (!L.length || !R.length) continue;
-      const mL = L.reduce((s, v) => s + v, 0) / L.length;
-      const mR = R.reduce((s, v) => s + v, 0) / R.length;
-      const mse = L.reduce((s, v) => s + (v - mL) ** 2, 0) + R.reduce((s, v) => s + (v - mR) ** 2, 0);
-      if (mse < bestMse) { bestMse = mse; best = { t, mL, mR }; }
+    for (const feat of feats) {
+      const vals = [...new Set(this.points.map(pt => pt[feat] ?? 0))].sort((a, b) => a - b);
+      for (let i = 0; i < vals.length - 1; i++) {
+        const t = (vals[i] + vals[i + 1]) / 2;
+        const L = [], R = [];
+        this.points.forEach((pt, idx) => ((pt[feat] ?? 0) <= t ? L : R).push(residuals[idx]));
+        if (!L.length || !R.length) continue;
+        const mL = L.reduce((s, v) => s + v, 0) / L.length;
+        const mR = R.reduce((s, v) => s + v, 0) / R.length;
+        const mse = L.reduce((s, v) => s + (v - mL) ** 2, 0) + R.reduce((s, v) => s + (v - mR) ** 2, 0);
+        if (mse < bestMse) { bestMse = mse; best = { feat, t, mL, mR }; }
+      }
     }
     return best;
   }
 
-  predict(x) {
+  predict(x, z) {
     const lr = this.params.learningRate || 0.1;
-    return this._F0 + this.stumps.reduce((s, st) => s + lr * (x <= st.t ? st.mL : st.mR), 0);
+    return this._F0 + this.stumps.reduce((s, st) => {
+      const v = st.feat === 'z' ? (z ?? 0) : x;
+      return s + lr * (v <= st.t ? st.mL : st.mR);
+    }, 0);
   }
 
   step() {
@@ -186,14 +193,17 @@ export class GradientBoostingRegressionSimulation extends BaseSimulation {
     const stump = this._fitStump(residuals);
     if (stump) {
       this.stumps.push(stump);
-      this.points.forEach((pt, i) => { this._preds[i] += lr * (pt.x <= stump.t ? stump.mL : stump.mR); });
+      this.points.forEach((pt, i) => {
+        const v = stump.feat === 'z' ? (pt.z ?? 0) : pt.x;
+        this._preds[i] += lr * (v <= stump.t ? stump.mL : stump.mR);
+      });
     }
     this.epoch++;
     this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
   }
 
   computeMetrics() {
-    return this.computeRegressionMetrics(this.points.map(pt => pt.y), this.points.map(pt => this.predict(pt.x)));
+    return this.computeRegressionMetrics(this.points.map(pt => pt.y), this.points.map(pt => this.predict(pt.x, pt.z)));
   }
 
   render() {

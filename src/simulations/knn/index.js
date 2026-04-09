@@ -112,14 +112,19 @@ export class KNNRegressionSimulation extends BaseSimulation {
   setup() {
     this.history = [];
     this.epoch   = 0;
+    this._3d     = this._is3DReg;
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
   }
 
-  predict(x) {
+  predict(x, z) {
     const k = Math.min(this.params.k || 5, this.points.length);
     const sorted = this.points
-      .map(pt => ({ d: Math.abs(pt.x - x), y: pt.y }))
+      .map(pt => {
+        const dx = pt.x - x;
+        const dz = this._3d ? (pt.z ?? 0) - (z ?? 0) : 0;
+        return { d: Math.sqrt(dx * dx + dz * dz), y: pt.y };
+      })
       .sort((a, b) => a.d - b.d);
     return sorted.slice(0, k).reduce((s, n) => s + n.y, 0) / k;
   }
@@ -132,7 +137,7 @@ export class KNNRegressionSimulation extends BaseSimulation {
 
   computeMetrics() {
     const trues = this.points.map(pt => pt.y);
-    const preds = this.points.map(pt => this.predict(pt.x));
+    const preds = this.points.map(pt => this.predict(pt.x, pt.z));
     return this.computeRegressionMetrics(trues, preds);
   }
 

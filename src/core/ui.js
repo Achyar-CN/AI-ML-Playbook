@@ -474,16 +474,17 @@ export class UIController {
     header.appendChild(label);
     header.appendChild(sampleLink);
 
-    // Extra 3D sample link for classification
-    if (sim.taskType === 'classification') {
-      const s3d = document.createElement('a');
-      s3d.className  = 'csv-sample-link';
-      s3d.href       = 'samples/classification_3d_sample.csv';
-      s3d.download   = '';
-      s3d.textContent = '3D sample';
-      s3d.style.marginLeft = '6px';
-      header.appendChild(s3d);
-    }
+    // Extra 3D sample link (classification + regression)
+    const s3dHref = sim.taskType === 'regression'
+      ? 'samples/regression_3d_sample.csv'
+      : 'samples/classification_3d_sample.csv';
+    const s3d = document.createElement('a');
+    s3d.className   = 'csv-sample-link';
+    s3d.href        = s3dHref;
+    s3d.download    = '';
+    s3d.textContent = '3D sample';
+    s3d.style.marginLeft = '6px';
+    header.appendChild(s3d);
     wrap.appendChild(header);
 
     // Status / filename row
@@ -550,7 +551,8 @@ export class UIController {
     const fmt = document.createElement('p');
     fmt.className = 'csv-format-hint';
     if (sim.taskType === 'regression') {
-      fmt.textContent = 'Format: x,y  (header row optional)';
+      fmt.innerHTML = 'Format: <b>f1[,f2],target</b> (header optional)<br>'
+        + '1 feature → 2D  |  2 features → <b>3D surface</b>';
     } else {
       fmt.innerHTML = 'Format: <b>f1,f2[,f3,...],label</b><br>'
         + '2 features → 2D  |  3 features → <b>3D scatter</b>  |  4+ → <b>PCA 2D</b>';
@@ -590,21 +592,43 @@ export class UIController {
         dataStore.pcaInfo      = null;
 
         if (sim.taskType === 'regression') {
-          // Regression: exactly 2 columns (1 feature + 1 target)
-          const raw = dataRows.filter(r => r.length >= 2 && !isNaN(r[0]) && !isNaN(r[1]));
+          // Regression: last column = target, earlier columns = features (1 or 2 supported)
+          const nCols = dataRows[0]?.length ?? 0;
+          if (nCols < 2) throw new Error('Need at least 2 columns (feature + target)');
+
+          const raw = dataRows.filter(r => r.length >= nCols && r.every(v => !isNaN(v)));
           if (!raw.length) throw new Error('No valid rows');
 
-          const fName = headerRow?.[0] ?? 'x';
-          const tName = headerRow?.[1] ?? 'y';
-          dataStore.featureNames = [fName];
-          dataStore.targetName   = tName;
-          dataStore.nFeatures    = 1;
-          dataStore.xLabel       = fName;
-          dataStore.yLabel       = tName;
+          const nFeat = nCols - 1; // last col = target
+          const featNames = headerRow
+            ? headerRow.slice(0, nFeat)
+            : Array.from({ length: nFeat }, (_, i) => nFeat === 1 ? 'x' : `x${i + 1}`);
+          const tName = headerRow?.[nFeat] ?? 'y';
 
-          const nx = norm1D(raw.map(r => r[0]));
-          const ny = norm1D(raw.map(r => r[1]));
-          dataStore.points   = nx.map((x, i) => ({ x, y: ny[i] }));
+          dataStore.featureNames = featNames;
+          dataStore.targetName   = tName;
+          dataStore.nFeatures    = nFeat;
+
+          const ny = norm1D(raw.map(r => r[nFeat])); // target always last
+
+          if (nFeat === 1) {
+            // 2D: one feature + target
+            const nx = norm1D(raw.map(r => r[0]));
+            dataStore.xLabel = featNames[0];
+            dataStore.yLabel = tName;
+            dataStore.is3D   = false;
+            dataStore.points = nx.map((x, i) => ({ x, y: ny[i] }));
+          } else {
+            // 3D: two features + target  →  {x=f1, y=target, z=f2}
+            const nx = norm1D(raw.map(r => r[0]));
+            const nz = norm1D(raw.map(r => r[1]));
+            dataStore.xLabel     = featNames[0];
+            dataStore.zLabel     = featNames[1];
+            dataStore.yLabel     = tName; // y-axis (vertical) = target
+            dataStore.is3D       = true;
+            dataStore.points     = nx.map((x, i) => ({ x, y: ny[i], z: nz[i] }));
+          }
+
           dataStore.type     = 'regression';
           dataStore.filename = file.name;
 

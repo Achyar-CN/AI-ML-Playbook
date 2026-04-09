@@ -33,50 +33,42 @@ export class BaseSimulation {
 
   computeMetrics() { return { loss: 0 }; }
 
+  // Getter: true when CSV is 3D regression (2 features + target).
+  // Subclasses use this without needing to import dataStore directly.
+  get _is3DReg() { return dataStore.is3D && dataStore.type === 'regression'; }
+
   // ── Public render entry-point called by SimulationManager ───────
-  // Calls the subclass render(), then draws overlays (axis labels, test
-  // points, 3D scatter, PCA badge, train/test legend).
   renderWithOverlays() {
     const W = this.canvas.width, H = this.canvas.height;
     const ctx = this.ctx;
 
     if (dataStore.is3D) {
-      // Bind drag-to-rotate once per canvas instance
       if (!this._3dBound) this._bind3DInteraction();
-      // 3D mode: replace normal viz with 3D scatter
       this._draw3DScatter(ctx, W, H);
-    } else {
-      this.render();
-      // Overlay hollow test-point markers on top of the simulation canvas
-      if (this.testPoints?.length > 0 && this.showTestOverlay !== false) {
-        if (this.taskType === 'classification') {
-          this._drawTestPointsClass(ctx, W, H);
-        } else if (this.taskType === 'regression') {
-          this._drawTestPointsReg(ctx, W, H);
-        }
+      return; // 3D draw handles its own axis labels + legend
+    }
+
+    this.render();
+    if (this.testPoints?.length > 0 && this.showTestOverlay !== false) {
+      if (this.taskType === 'classification') {
+        this._drawTestPointsClass(ctx, W, H);
+      } else if (this.taskType === 'regression') {
+        this._drawTestPointsReg(ctx, W, H);
       }
     }
 
-    // Axis labels: use CSV names if available, else sensible defaults
-    const xLbl = dataStore.xLabel
-      || (this.taskType === 'regression' ? 'x' : 'x₁');
-    const yLbl = dataStore.yLabel
-      || (this.taskType === 'regression' ? 'y' : 'x₂');
+    const xLbl = dataStore.xLabel || (this.taskType === 'regression' ? 'x' : 'x₁');
+    const yLbl = dataStore.yLabel || (this.taskType === 'regression' ? 'y' : 'x₂');
     this._drawAxisLabels(ctx, W, H, xLbl, yLbl);
 
-    // PCA badge
-    if (dataStore.pcaInfo) {
-      this._drawPCABadge(ctx, W, H);
-    }
+    if (dataStore.pcaInfo) this._drawPCABadge(ctx, W, H);
 
-    // Train / Test legend
     if (this.testPoints?.length > 0 && this.showTestOverlay !== false) {
       this._drawTrainTestLegend(ctx, W, H);
     }
   }
 
   // ── Inject test metrics into the last history entry ─────────────
-  // Called by SimulationManager after each step().
   _injectTestMetrics() {
     if (!this.testPoints?.length || !this.history.length) return;
     const last = this.history[this.history.length - 1];
@@ -95,7 +87,10 @@ export class BaseSimulation {
       });
     } else if (this.taskType === 'regression') {
       const trues = this.testPoints.map(pt => pt.y);
-      const preds = this.testPoints.map(pt => this.predict(pt.x));
+      // 3D regression: predict(f1, f2) where f1=pt.x, f2=pt.z
+      const preds = this._is3DReg
+        ? this.testPoints.map(pt => this.predict(pt.x, pt.z))
+        : this.testPoints.map(pt => this.predict(pt.x));
       const m = this.computeRegressionMetrics(trues, preds);
       Object.assign(last, {
         testLoss: m.mse, testMAE: m.mae,
@@ -291,6 +286,8 @@ export class BaseSimulation {
   }
 
   // ── 3D Scatter (replaces normal render when dataStore.is3D=true) ──
+  // Classification: X=f1, Y=f2(vertical), Z=f3.  Decision boundary shown on back wall (z=-1).
+  // Regression:     X=f1, Y=target(vertical), Z=f2.  Prediction surface shown as mesh.
   _draw3DScatter(ctx, W, H) {
     const dark  = document.documentElement.dataset.theme === 'dark';
     const bg    = dark ? '#0f172a' : '#ffffff';
@@ -301,27 +298,26 @@ export class BaseSimulation {
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
-    const scale  = Math.min(W, H) * 0.28;
-    const cx     = W * 0.5;
-    const cy     = H * 0.5;
-    const rotX   = this._3dRotX ?? 0.38;
-    const rotY   = this._3dRotY ?? 0.62;
+    const scale = Math.min(W, H) * 0.28;
+    const cx    = W * 0.5;
+    const cy    = H * 0.5;
+    const rotX  = this._3dRotX ?? 0.38;
+    const rotY  = this._3dRotY ?? 0.62;
 
-    // Rotation-matrix projection:
-    //  1. Rotate around Y (azimuth):  x' = x·cosY + z·sinY,  z' = -x·sinY + z·cosY
-    //  2. Rotate around X (elevation): y'' = y·cosX - z'·sinX, z'' = y·sinX + z'·cosX
-    //  3. Orthographic project: sx = cx + x'·scale,  sy = cy - y''·scale
     const project = (x, y, z) => {
       const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
       const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
-      const x1  =  x * cosY + z * sinY;
-      const z1  = -x * sinY + z * cosY;
-      const y2  =  y * cosX - z1 * sinX;
-      const z2  =  y * sinX + z1 * cosX;
+      const x1 =  x * cosY + z * sinY;
+      const z1 = -x * sinY + z * cosY;
+      const y2 =  y * cosX - z1 * sinX;
+      const z2 =  y * sinX + z1 * cosX;
       return { sx: cx + x1 * scale, sy: cy - y2 * scale, depth: z2 };
     };
 
-    // Floor grid on y = -1 plane
+    const isClass = this.taskType === 'classification';
+    const isReg   = this.taskType === 'regression';
+
+    // ── Floor grid (y = -1 plane) ──────────────────────────────────
     ctx.strokeStyle = gridC; ctx.lineWidth = 0.8;
     for (let t = -1; t <= 1; t += 0.5) {
       const a = project(t, -1, -1), b = project(t, -1, 1);
@@ -330,74 +326,173 @@ export class BaseSimulation {
       ctx.beginPath(); ctx.moveTo(c.sx, c.sy); ctx.lineTo(d.sx, d.sy); ctx.stroke();
     }
 
-    // Axes from origin (-1,-1,-1)
+    const hasTrained = typeof this.predict === 'function' && this.epoch > 0;
+
+    // ── Classification: decision boundary on back wall (z = -1) ───
+    // The back wall shows the 2D boundary in f1-f2 space (predict(f1, f2)).
+    if (isClass && hasTrained) {
+      const G    = 22;
+      const step = 2 / G;
+      for (let gx = 0; gx < G; gx++) {
+        for (let gy = 0; gy < G; gy++) {
+          const fx = -1 + gx * step;
+          const fy = -1 + gy * step;
+          const pred = this.predict(fx, fy);
+          const col  = pred === 1 ? 'rgba(29,78,216,0.22)' : 'rgba(220,38,38,0.22)';
+          // Draw quad on back wall: z = -1, varying x (f1) and y (f2)
+          const c0 = project(fx,        fy,        -1);
+          const c1 = project(fx + step,  fy,        -1);
+          const c2 = project(fx + step,  fy + step,  -1);
+          const c3 = project(fx,         fy + step,  -1);
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.moveTo(c0.sx, c0.sy); ctx.lineTo(c1.sx, c1.sy);
+          ctx.lineTo(c2.sx, c2.sy); ctx.lineTo(c3.sx, c3.sy);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+    }
+
+    // ── Regression: prediction surface mesh ────────────────────────
+    // Surface at (fx, predict(fx,fz), fz) — X=f1, Y=predicted target, Z=f2
+    if (isReg && hasTrained) {
+      const G    = 20;
+      const step = 2 / G;
+      const grid = [];
+      for (let gx = 0; gx <= G; gx++) {
+        grid[gx] = [];
+        for (let gz = 0; gz <= G; gz++) {
+          const fx = -1 + gx * step;
+          const fz = -1 + gz * step;
+          grid[gx][gz] = Math.max(-1, Math.min(1, this.predict(fx, fz)));
+        }
+      }
+      for (let gx = 0; gx < G; gx++) {
+        for (let gz = 0; gz < G; gz++) {
+          const fx = -1 + gx * step;
+          const fz = -1 + gz * step;
+          const c0 = project(fx,        grid[gx][gz],       fz);
+          const c1 = project(fx + step,  grid[gx+1][gz],     fz);
+          const c2 = project(fx + step,  grid[gx+1][gz+1],   fz + step);
+          const c3 = project(fx,         grid[gx][gz+1],     fz + step);
+          const avgY = (grid[gx][gz] + grid[gx+1][gz] + grid[gx+1][gz+1] + grid[gx][gz+1]) / 4;
+          const t = (avgY + 1) / 2;
+          const r = Math.round(30  + t * 190);
+          const g = Math.round(60  + (1 - Math.abs(t - 0.5) * 2) * 100);
+          const b = Math.round(220 - t * 190);
+          ctx.fillStyle   = `rgba(${r},${g},${b},0.22)`;
+          ctx.strokeStyle = `rgba(${r},${g},${b},0.35)`;
+          ctx.lineWidth   = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(c0.sx, c0.sy); ctx.lineTo(c1.sx, c1.sy);
+          ctx.lineTo(c2.sx, c2.sy); ctx.lineTo(c3.sx, c3.sy);
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+        }
+      }
+    }
+
+    // ── Axes ───────────────────────────────────────────────────────
     const O  = project(-1, -1, -1);
     const Xe = project( 1, -1, -1);
     const Ye = project(-1,  1, -1);
     const Ze = project(-1, -1,  1);
 
-    [[Xe, dataStore.xLabel || 'x₁'],
-     [Ye, dataStore.yLabel || 'x₂'],
-     [Ze, dataStore.zLabel || 'x₃'],
-    ].forEach(([end, label]) => {
+    // Classification: X=f1 label, Y=f2 label (vertical), Z=f3 label
+    // Regression:     X=f1 label, Y=target label (vertical), Z=f2 label
+    const axLabels = isReg
+      ? [[Xe, dataStore.xLabel  || 'x₁'],
+         [Ye, dataStore.targetName || 'y'],
+         [Ze, dataStore.zLabel  || 'x₂']]
+      : [[Xe, dataStore.xLabel  || 'x₁'],
+         [Ye, dataStore.yLabel  || 'x₂'],
+         [Ze, dataStore.zLabel  || 'x₃']];
+
+    axLabels.forEach(([end, label]) => {
       ctx.strokeStyle = axC; ctx.lineWidth = 1.8;
       ctx.beginPath(); ctx.moveTo(O.sx, O.sy); ctx.lineTo(end.sx, end.sy); ctx.stroke();
-
-      const ang = Math.atan2(end.sy - O.sy, end.sx - O.sx);
-      const al  = 7;
+      const ang = Math.atan2(end.sy - O.sy, end.sx - O.sx), al = 7;
       ctx.fillStyle = axC;
       ctx.beginPath();
       ctx.moveTo(end.sx, end.sy);
       ctx.lineTo(end.sx - al * Math.cos(ang - 0.4), end.sy - al * Math.sin(ang - 0.4));
       ctx.lineTo(end.sx - al * Math.cos(ang + 0.4), end.sy - al * Math.sin(ang + 0.4));
       ctx.closePath(); ctx.fill();
-
-      const lx = end.sx + (end.sx - O.sx) * 0.14;
-      const ly = end.sy + (end.sy - O.sy) * 0.14;
       ctx.fillStyle = txtC; ctx.font = 'bold 11px sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const lx = end.sx + (end.sx - O.sx) * 0.14;
+      const ly = end.sy + (end.sy - O.sy) * 0.14;
       ctx.fillText(label, lx, ly);
     });
 
-    // Collect points, sort back-to-front by projected depth (painter's algorithm)
-    const trainPts = (this.points || []).map(pt => ({ ...pt, _train: true }));
+    // ── Data points (painter's algorithm: far → near) ──────────────
+    const trainPts = (this.points    || []).map(pt => ({ ...pt, _train: true  }));
     const testPts  = (this.testPoints || []).map(pt => ({ ...pt, _train: false }));
-    const all = [...trainPts, ...testPts];
 
-    const projected = all.map(pt => {
+    const projected = [...trainPts, ...testPts].map(pt => {
       const { sx, sy, depth } = project(pt.x, pt.y ?? 0, pt.z ?? 0);
       return { pt, sx, sy, depth };
     });
-    projected.sort((a, b) => a.depth - b.depth); // draw far → near
+    projected.sort((a, b) => a.depth - b.depth);
 
     projected.forEach(({ pt, sx, sy }) => {
-      const r    = 4.5;
-      const col1 = pt.label === 1 ? '#1565c0' : '#c62828';
-      const col0 = pt.label === 1 ? 'rgba(21,101,192,0.28)' : 'rgba(198,40,40,0.28)';
-
-      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2);
-      if (pt._train) {
-        ctx.fillStyle   = col1; ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
+      if (isClass) {
+        const solid  = pt.label === 1 ? '#1565c0' : '#c62828';
+        const hollow = pt.label === 1 ? 'rgba(21,101,192,0.25)' : 'rgba(198,40,40,0.25)';
+        if (pt._train) {
+          // Train: filled circle
+          ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
+          ctx.fillStyle   = solid; ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
+        } else {
+          // Test: hollow square (consistent with 2D overlay)
+          const r = 5;
+          ctx.fillStyle   = 'rgba(255,255,255,0.55)';
+          ctx.strokeStyle = solid; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.rect(sx - r, sy - r, r * 2, r * 2);
+          ctx.fill(); ctx.stroke();
+        }
       } else {
-        ctx.fillStyle   = col0; ctx.fill();
-        ctx.strokeStyle = col1; ctx.lineWidth = 2; ctx.stroke();
+        if (pt._train) {
+          // Train: filled grey circle
+          ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+          ctx.fillStyle   = '#64748b'; ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
+        } else {
+          // Test: hollow diamond (consistent with 2D overlay)
+          const r = 4.5;
+          ctx.fillStyle   = 'rgba(255,255,255,0.55)';
+          ctx.strokeStyle = '#1d4ed8'; ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(sx,     sy - r); ctx.lineTo(sx + r, sy);
+          ctx.lineTo(sx,     sy + r); ctx.lineTo(sx - r, sy);
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+        }
       }
     });
 
-    // Info + drag hint badge
+    // ── Info badge ─────────────────────────────────────────────────
     ctx.save();
     ctx.fillStyle   = dark ? 'rgba(15,23,42,0.88)' : 'rgba(255,255,255,0.88)';
     ctx.strokeStyle = dark ? '#334155' : '#e2e8f0'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.roundRect(8, 8, 320, 48, 6); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(8, 8, 330, 48, 6); ctx.fill(); ctx.stroke();
     ctx.fillStyle = dark ? '#94a3b8' : '#475569';
     ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText('3D Scatter  •  Model trains on ' +
-      (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.yLabel || 'x₂'), 14, 22);
+    if (isReg) {
+      ctx.fillText('3D  •  Trains on ' +
+        (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.zLabel || 'x₂') +
+        '  →  ' + (dataStore.targetName || 'y'), 14, 22);
+    } else {
+      ctx.fillText('3D  •  Trains on ' +
+        (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.yLabel || 'x₂') +
+        '  (boundary on back wall)', 14, 22);
+    }
     ctx.fillStyle = dark ? '#64748b' : '#94a3b8';
     ctx.font = '10px sans-serif';
     ctx.fillText('Drag to rotate  •  Touch supported', 14, 40);
     ctx.restore();
+
+    // ── Train / Test legend ────────────────────────────────────────
+    if (this.testPoints?.length > 0) this._drawTrainTestLegend(ctx, W, H);
   }
 
   // ── Classification metrics ──────────────────────────────────────

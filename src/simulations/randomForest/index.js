@@ -52,36 +52,39 @@ function mseFn(data) {
   return data.reduce((s, pt) => s + (pt.y - m) ** 2, 0) / data.length;
 }
 
-function buildRegTree(data, depth, maxDepth, minLeaf) {
+function buildRegTree(data, depth, maxDepth, minLeaf, feats) {
   if (!data.length) return { value: 0 };
   const meanY = data.reduce((s, pt) => s + pt.y, 0) / data.length;
   if (depth >= maxDepth || data.length < minLeaf) return { value: meanY };
 
-  const vals = [...new Set(data.map(pt => pt.x))].sort((a, b) => a - b);
   let bestGain = 0, best = null;
   const pM = mseFn(data);
 
-  for (let i = 0; i < vals.length - 1; i++) {
-    const t = (vals[i] + vals[i + 1]) / 2;
-    const L = data.filter(pt => pt.x <= t);
-    const R = data.filter(pt => pt.x > t);
-    if (!L.length || !R.length) continue;
-    const wM = (L.length * mseFn(L) + R.length * mseFn(R)) / data.length;
-    if (pM - wM > bestGain) { bestGain = pM - wM; best = { t, L, R }; }
+  for (const feat of feats) {
+    const vals = [...new Set(data.map(pt => pt[feat] ?? 0))].sort((a, b) => a - b);
+    for (let i = 0; i < vals.length - 1; i++) {
+      const t = (vals[i] + vals[i + 1]) / 2;
+      const L = data.filter(pt => (pt[feat] ?? 0) <= t);
+      const R = data.filter(pt => (pt[feat] ?? 0) > t);
+      if (!L.length || !R.length) continue;
+      const wM = (L.length * mseFn(L) + R.length * mseFn(R)) / data.length;
+      if (pM - wM > bestGain) { bestGain = pM - wM; best = { feat, t, L, R }; }
+    }
   }
   if (!best) return { value: meanY };
   return {
-    threshold: best.t,
-    left:  buildRegTree(best.L, depth + 1, maxDepth, minLeaf),
-    right: buildRegTree(best.R, depth + 1, maxDepth, minLeaf),
+    feature: best.feat, threshold: best.t,
+    left:  buildRegTree(best.L, depth + 1, maxDepth, minLeaf, feats),
+    right: buildRegTree(best.R, depth + 1, maxDepth, minLeaf, feats),
   };
 }
 
-function predictRegTree(node, x) {
+function predictRegTree(node, x, z) {
   if (node.value !== undefined) return node.value;
-  return x <= node.threshold
-    ? predictRegTree(node.left, x)
-    : predictRegTree(node.right, x);
+  const v = node.feature === 'z' ? (z ?? 0) : x;
+  return v <= node.threshold
+    ? predictRegTree(node.left, x, z)
+    : predictRegTree(node.right, x, z);
 }
 
 // ── Random Forest Classification ──────────────────────────────────
@@ -184,14 +187,15 @@ export class RandomForestRegressionSimulation extends BaseSimulation {
     this.history = [];
     this.epoch   = 0;
     this.forest  = [];
+    this._3d     = this._is3DReg;
     const { nPoints, seed, noiseLevel, datasetType } = this.params;
     this.points = this.generateRegressionDataset(datasetType || 'sine', nPoints, seed, noiseLevel ?? 0.2);
     this._rng = this.seededRandom((seed || 42) + 1337);
   }
 
-  predict(x) {
+  predict(x, z) {
     if (!this.forest.length) return 0;
-    return this.forest.reduce((s, tree) => s + predictRegTree(tree, x), 0) / this.forest.length;
+    return this.forest.reduce((s, tree) => s + predictRegTree(tree, x, z ?? 0), 0) / this.forest.length;
   }
 
   step() {
@@ -200,13 +204,14 @@ export class RandomForestRegressionSimulation extends BaseSimulation {
     this.epoch++;
     const n = this.points.length;
     const bootstrap = Array.from({ length: n }, () => this.points[Math.floor(this._rng() * n)]);
-    this.forest.push(buildRegTree(bootstrap, 0, this.params.maxDepth || 4, this.params.minLeafSize || 3));
+    const feats = this._3d ? ['x', 'z'] : ['x'];
+    this.forest.push(buildRegTree(bootstrap, 0, this.params.maxDepth || 4, this.params.minLeafSize || 3, feats));
     this.history.push({ epoch: this.epoch, ...this.computeMetrics() });
   }
 
   computeMetrics() {
     const trues = this.points.map(pt => pt.y);
-    const preds = this.points.map(pt => this.predict(pt.x));
+    const preds = this.points.map(pt => this.predict(pt.x, pt.z));
     return this.computeRegressionMetrics(trues, preds);
   }
 
