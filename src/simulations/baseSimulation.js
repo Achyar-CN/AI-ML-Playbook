@@ -233,30 +233,30 @@ export class BaseSimulation {
 
     // Train marker
     if (testShape === 'sphere+pyramid') {
-      // Sphere (actual) + small pyramid (prediction) stacked
-      ctx.fillStyle = '#64748b';
-      ctx.beginPath(); ctx.arc(bx + 12, by + 17, 4, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 0.8; ctx.stroke();
-      ctx.fillStyle = '#64748b';
-      ctx.beginPath();
-      ctx.moveTo(bx + 12, by + 8);   // apex
-      ctx.lineTo(bx + 16, by + 13);  // base right
-      ctx.lineTo(bx + 8,  by + 13);  // base left
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 0.8; ctx.stroke();
+      // ● blue sphere (actual)
+      ctx.fillStyle = 'rgba(29,78,216,0.88)';
+      ctx.beginPath(); ctx.arc(bx + 12, by + 14, 4, 0, Math.PI * 2); ctx.fill();
     } else {
-      // Default: filled circle
       ctx.fillStyle = '#64748b';
       ctx.beginPath(); ctx.arc(bx + 12, by + 14, 4, 0, Math.PI * 2); ctx.fill();
     }
     ctx.fillStyle = txt; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText(testShape === 'sphere+pyramid' ? `Data (${this.points?.length ?? '?'})` : `Train (${this.points?.length ?? '?'})`, bx + 20, by + 14);
+    ctx.fillText(testShape === 'sphere+pyramid' ? `● Actual (${this.points?.length ?? '?'})` : `Train (${this.points?.length ?? '?'})`, bx + 20, by + 14);
 
-    // Test marker
+    // Test / prediction marker
     ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1.5; ctx.fillStyle = 'rgba(255,255,255,0.55)';
     if (testShape === 'sphere+pyramid') {
-      // Hollow sphere ring
-      ctx.beginPath(); ctx.arc(bx + 12, by + 34, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      // ▲ red pyramid (predicted)
+      ctx.fillStyle = 'rgba(220,38,38,0.75)';
+      ctx.beginPath();
+      ctx.moveTo(bx + 12, by + 28);   // apex
+      ctx.lineTo(bx + 17, by + 38);   // base right
+      ctx.lineTo(bx + 7,  by + 38);   // base left
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = txt;
+      ctx.fillText(`▲ Predicted`, bx + 20, by + 34);
+      ctx.restore();
+      return;
     } else if (testShape === 'ring') {
       ctx.beginPath(); ctx.arc(bx + 12, by + 34, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     } else if (testShape === 'diamond') {
@@ -496,64 +496,54 @@ export class BaseSimulation {
           ctx.fill(); ctx.stroke();
         }
       } else if (isBubble) {
-        // Sphere (●) = actual data  |  Pyramid (▲) = prediction (only when trained)
-        const tActual = pt.target ?? 0.5;  // normalized actual target [0,1]
+        // ● Sphere  = actual data   → blue,  size = actual target
+        // ▲ Pyramid = prediction    → red (semi-transparent), size = predicted target
+        // Overlap region blends blue + red → purple (= prediction matches actual)
+        const tActual = pt.target ?? 0.5;  // actual target [0,1]
         let tPred = null;
         if (hasTrained && typeof this.predict === 'function') {
-          const pred = this.predict(pt.x, pt.z ?? 0); // predict(f1, f2) → target ∈ [-1,1]
+          const pred = this.predict(pt.x, pt.z ?? 0); // predict(f1,f2) → [-1,1]
           tPred = Math.max(0, Math.min(1, (pred + 1) / 2));
         }
 
-        const sz = 4 + tActual * 5; // sphere radius = actual target size
+        const szAct  = 4 + tActual * 6;               // sphere radius
+        const szPred = tPred !== null ? 4 + tPred * 6 : 0; // pyramid "radius"
 
-        // Color helper: value [0,1] → rgb
-        const toRGB = (t) => ({
-          r: Math.round(30  + t * 190),
-          g: Math.round(60  + (1 - Math.abs(t - 0.5) * 2) * 100),
-          b: Math.round(220 - t * 190),
-        });
-
-        const cAct = toRGB(tActual);
-        const gap  = 3;  // screen-space gap between sphere top and pyramid base
-
-        // ── Pyramid helper (isosceles triangle pointing up) ──────────
+        // Pyramid centroid at (sx, sy).
+        // Apex at (sx, sy - szPred), base corners at (sx±sz*0.87, sy + szPred*0.5)
+        // → centroid Y = (-szPred + 0.5*szPred + 0.5*szPred)/3 = 0  ✓
         const drawPyramid = (x, y, r) => {
-          // base centre at (x, y), apex at (x, y - r*1.8), half-base = r
           ctx.beginPath();
-          ctx.moveTo(x,         y - r * 1.8);  // apex
-          ctx.lineTo(x + r,     y);             // base right
-          ctx.lineTo(x - r,     y);             // base left
+          ctx.moveTo(x,           y - r);           // apex
+          ctx.lineTo(x + r * 0.9, y + r * 0.5);    // base right
+          ctx.lineTo(x - r * 0.9, y + r * 0.5);    // base left
           ctx.closePath();
         };
 
         if (pt._train) {
-          // ── Sphere: filled, color = actual ──────────────────────────
-          ctx.beginPath(); ctx.arc(sx, sy, sz, 0, Math.PI * 2);
-          ctx.fillStyle   = `rgba(${cAct.r},${cAct.g},${cAct.b},0.85)`; ctx.fill();
-          ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 0.8; ctx.stroke();
+          // ── 1. Sphere (blue, solid) ──────────────────────────────────
+          ctx.beginPath(); ctx.arc(sx, sy, szAct, 0, Math.PI * 2);
+          ctx.fillStyle   = 'rgba(29,78,216,0.88)'; ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 0.8; ctx.stroke();
 
-          // ── Pyramid: filled, color = predicted (if trained) ─────────
+          // ── 2. Pyramid (red, semi-transparent → overlap = purple) ────
           if (tPred !== null) {
-            const cPred = toRGB(tPred);
-            const py    = sy - sz - gap; // pyramid base sits just above sphere
-            drawPyramid(sx, py, sz * 0.85);
-            ctx.fillStyle   = `rgba(${cPred.r},${cPred.g},${cPred.b},0.88)`; ctx.fill();
-            ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
+            drawPyramid(sx, sy, szPred);
+            ctx.fillStyle   = 'rgba(220,38,38,0.55)'; ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 0.8; ctx.stroke();
           }
         } else {
-          // ── Test sphere: hollow ring ─────────────────────────────────
-          ctx.beginPath(); ctx.arc(sx, sy, sz + 1, 0, Math.PI * 2);
-          ctx.fillStyle   = 'rgba(255,255,255,0.45)';
-          ctx.strokeStyle = `rgba(${cAct.r},${cAct.g},${cAct.b},1.0)`;
+          // ── Test sphere: hollow blue ring ────────────────────────────
+          ctx.beginPath(); ctx.arc(sx, sy, szAct + 1, 0, Math.PI * 2);
+          ctx.fillStyle   = 'rgba(255,255,255,0.35)';
+          ctx.strokeStyle = 'rgba(29,78,216,1.0)';
           ctx.lineWidth   = 2; ctx.fill(); ctx.stroke();
 
-          // ── Test pyramid: hollow outline ─────────────────────────────
+          // ── Test pyramid: hollow red triangle ────────────────────────
           if (tPred !== null) {
-            const cPred = toRGB(tPred);
-            const py    = sy - (sz + 1) - gap;
-            drawPyramid(sx, py, (sz + 1) * 0.85);
-            ctx.fillStyle   = 'rgba(255,255,255,0.45)';
-            ctx.strokeStyle = `rgba(${cPred.r},${cPred.g},${cPred.b},1.0)`;
+            drawPyramid(sx, sy, szPred + 1);
+            ctx.fillStyle   = 'rgba(255,255,255,0.25)';
+            ctx.strokeStyle = 'rgba(220,38,38,0.9)';
             ctx.lineWidth   = 2; ctx.fill(); ctx.stroke();
           }
         }
@@ -589,8 +579,8 @@ export class BaseSimulation {
       ctx.fillStyle = dark ? '#64748b' : '#94a3b8';
       ctx.font = '10px sans-serif';
       ctx.fillText(hasTrained
-        ? '● sphere = actual  •  ▲ pyramid = predicted  •  color = target value  •  drag to rotate'
-        : '● sphere = actual data  •  ▲ pyramid appears after training  •  drag to rotate', 14, 40);
+        ? '● blue = actual size  •  ▲ red = predicted size  •  overlap = purple (match)  •  drag to rotate'
+        : '● blue sphere = actual target size  •  ▲ red pyramid appears after training  •  drag to rotate', 14, 40);
     } else if (isReg) {
       ctx.fillText('3D  •  Trains on ' +
         (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.zLabel || 'x₂') +
@@ -607,35 +597,27 @@ export class BaseSimulation {
     }
     ctx.restore();
 
-    // ── Bubble chart color legend (bottom-left, with padding) ────────
+    // ── Bubble size legend (bottom-left) ─────────────────────────────
     if (isBubble && dataStore.targetRange) {
-      const lw = 90, lh = 10, pad = 10;
-      const lx0 = 8 + pad; // left edge + padding
-      const ly  = H - 10;
-      // Background panel
+      const { min, max } = dataStore.targetRange;
       ctx.save();
       ctx.fillStyle   = dark ? 'rgba(15,23,42,0.88)' : 'rgba(255,255,255,0.88)';
       ctx.strokeStyle = dark ? '#334155' : '#e2e8f0'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.roundRect(8, ly - lh - 20, lw + pad * 2, lh + 22, 5);
-      ctx.fill(); ctx.stroke();
-      // Color gradient bar
-      const grad = ctx.createLinearGradient(lx0, 0, lx0 + lw, 0);
-      grad.addColorStop(0, 'rgb(30,60,220)');
-      grad.addColorStop(0.5, 'rgb(60,160,120)');
-      grad.addColorStop(1, 'rgb(220,60,30)');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.roundRect(lx0, ly - lh, lw, lh, 3); ctx.fill();
-      // Labels
+      ctx.beginPath(); ctx.roundRect(8, H - 48, 160, 40, 5); ctx.fill(); ctx.stroke();
       ctx.fillStyle = dark ? '#94a3b8' : '#475569';
-      ctx.font = '9px sans-serif'; ctx.textBaseline = 'bottom';
-      const { min, max } = dataStore.targetRange;
-      ctx.textAlign = 'left';
-      ctx.fillText(min.toFixed(1), lx0, ly);
-      ctx.textAlign = 'right';
-      ctx.fillText(max.toFixed(1), lx0 + lw, ly);
-      ctx.textAlign = 'center';
-      const legendLabel = (hasTrained ? '▶ pred ' : 'actual ') + (dataStore.targetName || 'target');
-      ctx.fillText(legendLabel, lx0 + lw / 2, ly - lh - 3);
+      ctx.font = '9px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      // small sphere + big sphere to show size encoding
+      ctx.fillStyle = 'rgba(29,78,216,0.7)';
+      ctx.beginPath(); ctx.arc(20, H - 35, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(34, H - 35, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = dark ? '#94a3b8' : '#475569';
+      ctx.fillText(`size = ${dataStore.targetName || 'target'}  [${min.toFixed(1)} → ${max.toFixed(1)}]`, 44, H - 35);
+      // small red triangle + big red triangle
+      ctx.fillStyle = 'rgba(220,38,38,0.75)';
+      ctx.beginPath(); ctx.moveTo(20,H-20); ctx.lineTo(23,H-13); ctx.lineTo(17,H-13); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(34,H-22); ctx.lineTo(40,H-13); ctx.lineTo(28,H-13); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = dark ? '#94a3b8' : '#475569';
+      ctx.fillText('small = low pred  •  big = high pred', 44, H - 17);
       ctx.restore();
     }
 
