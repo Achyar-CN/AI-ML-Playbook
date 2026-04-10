@@ -232,31 +232,31 @@ export class BaseSimulation {
     ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 5); ctx.fill(); ctx.stroke();
 
     // Train marker
-    if (testShape === 'octahedron') {
-      // Filled octahedron (diamond) for train
-      const r = 4;
-      ctx.fillStyle = '#64748b'; ctx.strokeStyle = '#64748b'; ctx.lineWidth = 0.8;
+    if (testShape === 'sphere+pyramid') {
+      // Sphere (actual) + small pyramid (prediction) stacked
+      ctx.fillStyle = '#64748b';
+      ctx.beginPath(); ctx.arc(bx + 12, by + 17, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 0.8; ctx.stroke();
+      ctx.fillStyle = '#64748b';
       ctx.beginPath();
-      ctx.moveTo(bx+12, by+10); ctx.lineTo(bx+16, by+14);
-      ctx.lineTo(bx+12, by+18); ctx.lineTo(bx+8,  by+14);
-      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.moveTo(bx + 12, by + 8);   // apex
+      ctx.lineTo(bx + 16, by + 13);  // base right
+      ctx.lineTo(bx + 8,  by + 13);  // base left
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 0.8; ctx.stroke();
     } else {
       // Default: filled circle
       ctx.fillStyle = '#64748b';
       ctx.beginPath(); ctx.arc(bx + 12, by + 14, 4, 0, Math.PI * 2); ctx.fill();
     }
     ctx.fillStyle = txt; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText(`Train (${this.points?.length ?? '?'})`, bx + 20, by + 14);
+    ctx.fillText(testShape === 'sphere+pyramid' ? `Data (${this.points?.length ?? '?'})` : `Train (${this.points?.length ?? '?'})`, bx + 20, by + 14);
 
     // Test marker
     ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1.5; ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    if (testShape === 'octahedron') {
-      // Hollow octahedron for test
-      const r = 4;
-      ctx.beginPath();
-      ctx.moveTo(bx+12, by+30); ctx.lineTo(bx+16, by+34);
-      ctx.lineTo(bx+12, by+38); ctx.lineTo(bx+8,  by+34);
-      ctx.closePath(); ctx.fill(); ctx.stroke();
+    if (testShape === 'sphere+pyramid') {
+      // Hollow sphere ring
+      ctx.beginPath(); ctx.arc(bx + 12, by + 34, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     } else if (testShape === 'ring') {
       ctx.beginPath(); ctx.arc(bx + 12, by + 34, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     } else if (testShape === 'diamond') {
@@ -496,55 +496,66 @@ export class BaseSimulation {
           ctx.fill(); ctx.stroke();
         }
       } else if (isBubble) {
-        // Shape: octahedron (diamond) — color = predicted target, size = actual target
-        // Before training: color = actual target; after: color = predicted target
-        const tActual = pt.target ?? 0.5;  // actual target [0,1]
-        let tPred;
+        // Sphere (●) = actual data  |  Pyramid (▲) = prediction (only when trained)
+        const tActual = pt.target ?? 0.5;  // normalized actual target [0,1]
+        let tPred = null;
         if (hasTrained && typeof this.predict === 'function') {
           const pred = this.predict(pt.x, pt.z ?? 0); // predict(f1, f2) → target ∈ [-1,1]
           tPred = Math.max(0, Math.min(1, (pred + 1) / 2));
-        } else {
-          tPred = tActual;
         }
-        const sz = 4 + tActual * 5; // size = actual target
-        const cr = Math.round(30  + tPred * 190);
-        const cg = Math.round(60  + (1 - Math.abs(tPred - 0.5) * 2) * 100);
-        const cb = Math.round(220 - tPred * 190);
 
-        // How well does prediction match actual? (0 = off, 1 = perfect)
-        const matchScore = hasTrained ? Math.max(0, 1 - Math.abs(tPred - tActual) * 4) : 0;
+        const sz = 4 + tActual * 5; // sphere radius = actual target size
 
-        // Draw octahedron (diamond) shape
-        const drawOct = (x, y, r) => {
+        // Color helper: value [0,1] → rgb
+        const toRGB = (t) => ({
+          r: Math.round(30  + t * 190),
+          g: Math.round(60  + (1 - Math.abs(t - 0.5) * 2) * 100),
+          b: Math.round(220 - t * 190),
+        });
+
+        const cAct = toRGB(tActual);
+        const gap  = 3;  // screen-space gap between sphere top and pyramid base
+
+        // ── Pyramid helper (isosceles triangle pointing up) ──────────
+        const drawPyramid = (x, y, r) => {
+          // base centre at (x, y), apex at (x, y - r*1.8), half-base = r
           ctx.beginPath();
-          ctx.moveTo(x,     y - r);
-          ctx.lineTo(x + r, y);
-          ctx.lineTo(x,     y + r);
-          ctx.lineTo(x - r, y);
+          ctx.moveTo(x,         y - r * 1.8);  // apex
+          ctx.lineTo(x + r,     y);             // base right
+          ctx.lineTo(x - r,     y);             // base left
           ctx.closePath();
         };
 
         if (pt._train) {
-          // Fill with prediction color
-          drawOct(sx, sy, sz);
-          ctx.fillStyle   = `rgba(${cr},${cg},${cb},0.82)`; ctx.fill();
-          // Outer border: bright white when perfect match, muted otherwise
-          ctx.strokeStyle = matchScore > 0.8
-            ? `rgba(255,255,255,${0.4 + matchScore * 0.6})`
-            : `rgba(${cr},${cg},${cb},0.95)`;
-          ctx.lineWidth = matchScore > 0.8 ? 1.5 : 0.8; ctx.stroke();
-          // Perfect match glow ring
-          if (matchScore > 0.85) {
-            drawOct(sx, sy, sz + 2.5);
-            ctx.strokeStyle = `rgba(255,255,255,${(matchScore - 0.85) * 5})`;
-            ctx.lineWidth = 1; ctx.stroke();
+          // ── Sphere: filled, color = actual ──────────────────────────
+          ctx.beginPath(); ctx.arc(sx, sy, sz, 0, Math.PI * 2);
+          ctx.fillStyle   = `rgba(${cAct.r},${cAct.g},${cAct.b},0.85)`; ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 0.8; ctx.stroke();
+
+          // ── Pyramid: filled, color = predicted (if trained) ─────────
+          if (tPred !== null) {
+            const cPred = toRGB(tPred);
+            const py    = sy - sz - gap; // pyramid base sits just above sphere
+            drawPyramid(sx, py, sz * 0.85);
+            ctx.fillStyle   = `rgba(${cPred.r},${cPred.g},${cPred.b},0.88)`; ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
           }
         } else {
-          // Test: hollow octahedron — white fill + colored thick border
-          drawOct(sx, sy, sz + 1.5);
-          ctx.fillStyle   = 'rgba(255,255,255,0.55)';
-          ctx.strokeStyle = `rgba(${cr},${cg},${cb},1.0)`;
+          // ── Test sphere: hollow ring ─────────────────────────────────
+          ctx.beginPath(); ctx.arc(sx, sy, sz + 1, 0, Math.PI * 2);
+          ctx.fillStyle   = 'rgba(255,255,255,0.45)';
+          ctx.strokeStyle = `rgba(${cAct.r},${cAct.g},${cAct.b},1.0)`;
           ctx.lineWidth   = 2; ctx.fill(); ctx.stroke();
+
+          // ── Test pyramid: hollow outline ─────────────────────────────
+          if (tPred !== null) {
+            const cPred = toRGB(tPred);
+            const py    = sy - (sz + 1) - gap;
+            drawPyramid(sx, py, (sz + 1) * 0.85);
+            ctx.fillStyle   = 'rgba(255,255,255,0.45)';
+            ctx.strokeStyle = `rgba(${cPred.r},${cPred.g},${cPred.b},1.0)`;
+            ctx.lineWidth   = 2; ctx.fill(); ctx.stroke();
+          }
         }
       } else {
         if (pt._train) {
@@ -571,15 +582,15 @@ export class BaseSimulation {
     ctx.fillStyle = dark ? '#94a3b8' : '#475569';
     ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     if (isBubble) {
-      ctx.fillText('3D octahedron  •  trains ' +
+      ctx.fillText('3D  •  trains ' +
         (dataStore.xLabel || 'f1') + ' + ' + (dataStore.zLabel || 'f2') +
         ' → ' + (dataStore.targetName || 'target') +
         '  [' + (dataStore.wLabel || 'f3') + ' = visual Z]', 14, 22);
       ctx.fillStyle = dark ? '#64748b' : '#94a3b8';
       ctx.font = '10px sans-serif';
       ctx.fillText(hasTrained
-        ? '◆ color = predicted ' + (dataStore.targetName || 'target') + '  •  size = actual  •  white glow = exact match'
-        : 'Run to train  •  ◆ color = predicted, size = actual  •  drag to rotate', 14, 40);
+        ? '● sphere = actual  •  ▲ pyramid = predicted  •  color = target value  •  drag to rotate'
+        : '● sphere = actual data  •  ▲ pyramid appears after training  •  drag to rotate', 14, 40);
     } else if (isReg) {
       ctx.fillText('3D  •  Trains on ' +
         (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.zLabel || 'x₂') +
@@ -630,7 +641,7 @@ export class BaseSimulation {
 
     // ── Train / Test legend (bottom-right) ────────────────────────
     if (this.testPoints?.length > 0 && showTest)
-      this._drawTrainTestLegend(ctx, W, H, isBubble ? 'octahedron' : 'square');
+      this._drawTrainTestLegend(ctx, W, H, isBubble ? 'sphere+pyramid' : 'square');
   }
 
   // ── Classification metrics ──────────────────────────────────────
