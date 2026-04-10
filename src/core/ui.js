@@ -538,14 +538,12 @@ export class UIController {
       dataStore.xLabel           = null;
       dataStore.yLabel           = null;
       dataStore.zLabel           = null;
-      dataStore.wLabel           = null;
       dataStore.is3D             = false;
       dataStore.regFeatures      = 0;
       dataStore.pcaInfo          = null;
       dataStore.rawRows          = null;
       dataStore.rawHeader        = null;
       dataStore.selectedFeatIdxs = null;
-      dataStore.targetRange      = null;
       this._dataSourceMode       = 'scenario';
       this.simulationManager.updateCurrentParams({});
       this.renderDataParams(sim);
@@ -557,11 +555,11 @@ export class UIController {
 
     // Format-hint tooltip "i" icon after Clear button
     const fmtTip = sim.taskType === 'regression'
-      ? 'Format: feature1[,feature2[,feature3]],target — header row recommended.\n'
-        + 'e.g. age,income,score,salary\n'
+      ? 'Format: feature1[,feature2[,feature3+]],target — header row recommended.\n'
+        + 'e.g. age,income,salary\n'
         + '1 feature → 2D line fit\n'
         + '2 features → 3D surface fit\n'
-        + '3 features → 3D bubble chart (target = bubble color)'
+        + '3+ features → PCA reduced to 2D → 3D surface fit'
       : 'Format: feature1,feature2[,feature3,...],label — header row recommended.\n'
         + 'e.g. height,weight,bmi,obese  (label must be 0 or 1)\n'
         + '2 features → 2D decision boundary\n'
@@ -611,12 +609,10 @@ export class UIController {
         dataStore.xLabel           = null;
         dataStore.yLabel           = null;
         dataStore.zLabel           = null;
-        dataStore.wLabel           = null;
         dataStore.is3D             = false;
         dataStore.regFeatures      = 0;
         dataStore.pcaInfo          = null;
         dataStore.selectedFeatIdxs = null;
-        dataStore.targetRange      = null;
 
         if (sim.taskType === 'regression') {
           // Regression: last column = target, earlier columns = features
@@ -663,23 +659,17 @@ export class UIController {
             dataStore.regFeatures = 2;
             dataStore.points      = nx.map((x, i) => ({ x, y: ny[i], z: nz[i] }));
           } else {
-            // 3D bubble chart: f1+f2 train model, f3 = visual Z axis
-            // pt.y = target (model training), pt.z = f2 (training feat 2 + visual Y),
-            // pt.f3 = f3 (visual Z only), pt.target = [0,1] for color encoding
-            const nx  = norm1D(raw.map(r => r[defaultSel[0]])); // f1
-            const nz  = norm1D(raw.map(r => r[defaultSel[1]])); // f2 (training feat 2)
-            const nf3 = norm1D(raw.map(r => r[defaultSel[2]])); // f3 (visual Z)
-            const rawTarget = raw.map(r => r[nFeat]);
-            const tMin = Math.min(...rawTarget), tMax = Math.max(...rawTarget);
-            const nt = rawTarget.map(v => (tMax === tMin) ? 0.5 : (v - tMin) / (tMax - tMin));
-            dataStore.xLabel      = selFeatNames[0]; // f1 → visual X axis
-            dataStore.zLabel      = selFeatNames[1]; // f2 → visual Y axis (training feat 2)
-            dataStore.wLabel      = selFeatNames[2]; // f3 → visual Z axis (display only)
-            dataStore.yLabel      = tName;           // target name (for surface mode compat)
+            // 3+ features → PCA to 2 components → 3D surface fit
+            const featMatrix = raw.map(r => defaultSel.map(i => r[i]));
+            const pca = computePCA(featMatrix);
+            const pct = pca.varExplained.map(v => Math.round(v * 100));
+            dataStore.xLabel      = `PC1 (${pct[0]}%)`;
+            dataStore.zLabel      = `PC2 (${pct[1]}%)`;
+            dataStore.yLabel      = tName;
             dataStore.is3D        = true;
-            dataStore.regFeatures = 3;
-            dataStore.targetRange = { min: tMin, max: tMax };
-            dataStore.points      = nx.map((x, i) => ({ x, y: ny[i], z: nz[i], f3: nf3[i], target: nt[i] }));
+            dataStore.regFeatures = 2;
+            dataStore.pcaInfo     = { varExplained: pca.varExplained };
+            dataStore.points      = pca.projected.map(([x, z], i) => ({ x, y: ny[i], z }));
           }
 
           dataStore.type     = 'regression';
@@ -1145,8 +1135,8 @@ export class UIController {
       } else {
         if (n === 1) preview.textContent = `→ 2D line fit`;
         else if (n === 2) preview.textContent = `→ 3D surface fit`;
-        else if (n === 3) preview.textContent = `→ 3D bubble chart (target = color)`;
-        else preview.textContent = `Select 1–3 features`;
+        else if (n >= 3) preview.textContent = `→ PCA (${n}→2) then 3D surface fit`;
+        else preview.textContent = `Select 1–2 features (or 3+ for PCA)`;
       }
     };
 
@@ -1189,9 +1179,8 @@ export class UIController {
     };
 
     dataStore.selectedFeatIdxs = selectedIdxs;
-    dataStore.xLabel = null; dataStore.yLabel = null; dataStore.zLabel = null; dataStore.wLabel = null;
+    dataStore.xLabel = null; dataStore.yLabel = null; dataStore.zLabel = null;
     dataStore.is3D   = false; dataStore.regFeatures = 0; dataStore.pcaInfo = null;
-    dataStore.targetRange = null;
 
     const featNames = dataStore.featureNames;
     const selNames  = selectedIdxs.map(i => featNames[i]);
@@ -1227,21 +1216,16 @@ export class UIController {
         dataStore.xLabel = selNames[0]; dataStore.zLabel = selNames[1]; dataStore.yLabel = tName;
         dataStore.is3D = true; dataStore.regFeatures = 2;
         dataStore.points = nx.map((x, i) => ({ x, y: ny[i], z: nz[i] }));
-      } else if (selectedIdxs.length === 3) {
-        // f1+f2 train model, f3 = visual Z axis (same convention as _handleCSVUpload)
-        const nx  = norm1D(raw.map(r => r[selectedIdxs[0]])); // f1
-        const nz  = norm1D(raw.map(r => r[selectedIdxs[1]])); // f2 (training feat 2)
-        const nf3 = norm1D(raw.map(r => r[selectedIdxs[2]])); // f3 (visual Z)
-        const rawTarget = raw.map(r => r[nFeat]);
-        const tMin = Math.min(...rawTarget), tMax = Math.max(...rawTarget);
-        const nt = rawTarget.map(v => (tMax === tMin) ? 0.5 : (v - tMin) / (tMax - tMin));
-        dataStore.xLabel = selNames[0]; // f1 → X axis
-        dataStore.zLabel = selNames[1]; // f2 → Y vertical axis (training feat 2)
-        dataStore.wLabel = selNames[2]; // f3 → Z depth axis (visual only)
-        dataStore.yLabel = tName;       // target name
-        dataStore.is3D = true; dataStore.regFeatures = 3;
-        dataStore.targetRange = { min: tMin, max: tMax };
-        dataStore.points = nx.map((x, i) => ({ x, y: ny[i], z: nz[i], f3: nf3[i], target: nt[i] }));
+      } else if (selectedIdxs.length >= 3) {
+        // 3+ features → PCA to 2 components → 3D surface fit
+        const featMatrix = raw.map(r => selectedIdxs.map(i => r[i]));
+        const pca = computePCA(featMatrix);
+        const pct = pca.varExplained.map(v => Math.round(v * 100));
+        dataStore.xLabel = `PC1 (${pct[0]}%)`; dataStore.zLabel = `PC2 (${pct[1]}%)`;
+        dataStore.yLabel = tName;
+        dataStore.is3D = true; dataStore.regFeatures = 2;
+        dataStore.pcaInfo = { varExplained: pca.varExplained };
+        dataStore.points = pca.projected.map(([x, z], i) => ({ x, y: ny[i], z }));
       }
     }
 

@@ -14,16 +14,14 @@ export const dataStore = {
   xLabel:       null,   // e.g. 'age', 'PC1 (62%)'  — null = no label
   yLabel:       null,   // e.g. 'income', 'PC2 (28%)'
   zLabel:       null,   // only set when is3D = true
-  wLabel:       null,   // 4th dimension label (regression bubble: target name)
 
   // ── Dimensionality flags ────────────────────────────────────────
   is3D:         false,  // true when 3D scatter shown
-  regFeatures:  0,      // 1 = 2D line | 2 = 3D surface | 3 = 3D bubble chart
+  regFeatures:  0,      // 1 = 2D line | 2 = 3D surface
   pcaInfo:      null,   // { varExplained: [0.62, 0.28] } when PCA was applied
 
   // ── Raw data (for feature re-selection after upload) ────────────
   rawRows:          null,   // numeric rows: number[][] (filtered, all columns)
   rawHeader:        null,   // string[] or null (original header)
   selectedFeatIdxs: null,   // number[] — indices into featureNames currently active
-  targetRange:      null,   // {min, max} of raw target — for bubble chart color legend
 };
