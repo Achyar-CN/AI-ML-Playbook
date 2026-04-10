@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gh run:*)"
+      "Bash(gh run:*)",
+      "Bash(powershell -Command \"Get-Content 'C:\\\\Users\\\\achyar059232\\\\.claude\\\\projects\\\\c--Users-achyar059232-Project-Self-Improvement-AI-ML-Playbook\\\\8ffd87c2-ddb5-4246-aeb3-338b113be834.jsonl' | Select-Object -Last 200\")"
     ]
   }
 }

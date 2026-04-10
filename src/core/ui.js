@@ -81,8 +81,7 @@ export class UIController {
   // ── Topbar ──────────────────────────────────────────────────
   _bindTopbarButtons() {
     document.getElementById('start-btn')?.addEventListener('click', () => {
-      const isBubble = this.simulationManager.current?._isBubbleChart;
-      this.setStatus(isBubble ? 'exploring' : 'running');
+      this.setStatus('running');
       this.simulationManager.start();
     });
     document.getElementById('pause-btn')?.addEventListener('click', () => {
@@ -171,11 +170,6 @@ export class UIController {
 
   _updateEpoch(history) {
     if (!this.epochDisplay) return;
-    // Bubble chart: display-only, no epoch counter
-    if (this.simulationManager.current?._isBubbleChart) {
-      this.epochDisplay.textContent = 'Bubble chart';
-      return;
-    }
     // Always read max from the live params (reflects slider changes instantly)
     const p        = this.simulationManager.current?.params;
     const maxEpoch = p ? (p.epochs ?? p.nTrees ?? p.maxDepth ?? '?') : '?';
@@ -669,21 +663,23 @@ export class UIController {
             dataStore.regFeatures = 2;
             dataStore.points      = nx.map((x, i) => ({ x, y: ny[i], z: nz[i] }));
           } else {
-            // 3D bubble chart: three features, target as color/size
-            const nx = norm1D(raw.map(r => r[defaultSel[0]]));
-            const ny2 = norm1D(raw.map(r => r[defaultSel[1]]));
-            const nz = norm1D(raw.map(r => r[defaultSel[2]]));
+            // 3D bubble chart: f1+f2 train model, f3 = visual Z axis
+            // pt.y = target (model training), pt.z = f2 (training feat 2 + visual Y),
+            // pt.f3 = f3 (visual Z only), pt.target = [0,1] for color encoding
+            const nx  = norm1D(raw.map(r => r[defaultSel[0]])); // f1
+            const nz  = norm1D(raw.map(r => r[defaultSel[1]])); // f2 (training feat 2)
+            const nf3 = norm1D(raw.map(r => r[defaultSel[2]])); // f3 (visual Z)
             const rawTarget = raw.map(r => r[nFeat]);
             const tMin = Math.min(...rawTarget), tMax = Math.max(...rawTarget);
             const nt = rawTarget.map(v => (tMax === tMin) ? 0.5 : (v - tMin) / (tMax - tMin));
-            dataStore.xLabel      = selFeatNames[0];
-            dataStore.yLabel      = selFeatNames[1];
-            dataStore.zLabel      = selFeatNames[2];
-            dataStore.wLabel      = tName;
+            dataStore.xLabel      = selFeatNames[0]; // f1 → visual X axis
+            dataStore.zLabel      = selFeatNames[1]; // f2 → visual Y axis (training feat 2)
+            dataStore.wLabel      = selFeatNames[2]; // f3 → visual Z axis (display only)
+            dataStore.yLabel      = tName;           // target name (for surface mode compat)
             dataStore.is3D        = true;
             dataStore.regFeatures = 3;
             dataStore.targetRange = { min: tMin, max: tMax };
-            dataStore.points      = nx.map((x, i) => ({ x, y: ny2[i], z: nz[i], target: nt[i] }));
+            dataStore.points      = nx.map((x, i) => ({ x, y: ny[i], z: nz[i], f3: nf3[i], target: nt[i] }));
           }
 
           dataStore.type     = 'regression';
@@ -1232,16 +1228,20 @@ export class UIController {
         dataStore.is3D = true; dataStore.regFeatures = 2;
         dataStore.points = nx.map((x, i) => ({ x, y: ny[i], z: nz[i] }));
       } else if (selectedIdxs.length === 3) {
-        const nx  = norm1D(raw.map(r => r[selectedIdxs[0]]));
-        const ny2 = norm1D(raw.map(r => r[selectedIdxs[1]]));
-        const nz  = norm1D(raw.map(r => r[selectedIdxs[2]]));
+        // f1+f2 train model, f3 = visual Z axis (same convention as _handleCSVUpload)
+        const nx  = norm1D(raw.map(r => r[selectedIdxs[0]])); // f1
+        const nz  = norm1D(raw.map(r => r[selectedIdxs[1]])); // f2 (training feat 2)
+        const nf3 = norm1D(raw.map(r => r[selectedIdxs[2]])); // f3 (visual Z)
         const rawTarget = raw.map(r => r[nFeat]);
         const tMin = Math.min(...rawTarget), tMax = Math.max(...rawTarget);
         const nt = rawTarget.map(v => (tMax === tMin) ? 0.5 : (v - tMin) / (tMax - tMin));
-        dataStore.xLabel = selNames[0]; dataStore.yLabel = selNames[1]; dataStore.zLabel = selNames[2];
-        dataStore.wLabel = tName; dataStore.is3D = true; dataStore.regFeatures = 3;
+        dataStore.xLabel = selNames[0]; // f1 → X axis
+        dataStore.zLabel = selNames[1]; // f2 → Y vertical axis (training feat 2)
+        dataStore.wLabel = selNames[2]; // f3 → Z depth axis (visual only)
+        dataStore.yLabel = tName;       // target name
+        dataStore.is3D = true; dataStore.regFeatures = 3;
         dataStore.targetRange = { min: tMin, max: tMax };
-        dataStore.points = nx.map((x, i) => ({ x, y: ny2[i], z: nz[i], target: nt[i] }));
+        dataStore.points = nx.map((x, i) => ({ x, y: ny[i], z: nz[i], f3: nf3[i], target: nt[i] }));
       }
     }
 

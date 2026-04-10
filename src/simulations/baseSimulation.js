@@ -35,7 +35,7 @@ export class BaseSimulation {
 
   // Getter: true when CSV is 3D regression (2 features + target).
   // Subclasses use this without needing to import dataStore directly.
-  get _is3DReg()      { return dataStore.is3D && dataStore.type === 'regression' && dataStore.regFeatures !== 3; }
+  get _is3DReg()      { return dataStore.is3D && dataStore.type === 'regression'; }
   get _is3DClass()    { return dataStore.is3D && dataStore.type === 'classification'; }
   // Bubble chart mode: 3-feature regression, no training, just display
   get _isBubbleChart(){ return dataStore.regFeatures === 3; }
@@ -217,7 +217,7 @@ export class BaseSimulation {
     ctx.restore();
   }
 
-  // Train/Test legend (bottom-right). testShape: 'square'|'diamond'|'ring'
+  // Train/Test legend (bottom-right). testShape: 'square'|'diamond'|'ring'|'octahedron'
   _drawTrainTestLegend(ctx, W, H, testShape = 'square') {
     if (!this.testPoints?.length) return;
     const dark = document.documentElement.dataset.theme === 'dark';
@@ -231,15 +231,33 @@ export class BaseSimulation {
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 5); ctx.fill(); ctx.stroke();
 
-    // Train dot (filled circle)
-    ctx.fillStyle = '#64748b';
-    ctx.beginPath(); ctx.arc(bx + 12, by + 14, 4, 0, Math.PI * 2); ctx.fill();
+    // Train marker
+    if (testShape === 'octahedron') {
+      // Filled octahedron (diamond) for train
+      const r = 4;
+      ctx.fillStyle = '#64748b'; ctx.strokeStyle = '#64748b'; ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(bx+12, by+10); ctx.lineTo(bx+16, by+14);
+      ctx.lineTo(bx+12, by+18); ctx.lineTo(bx+8,  by+14);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else {
+      // Default: filled circle
+      ctx.fillStyle = '#64748b';
+      ctx.beginPath(); ctx.arc(bx + 12, by + 14, 4, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.fillStyle = txt; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText(`Train (${this.points?.length ?? '?'})`, bx + 20, by + 14);
 
     // Test marker
     ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1.5; ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    if (testShape === 'ring') {
+    if (testShape === 'octahedron') {
+      // Hollow octahedron for test
+      const r = 4;
+      ctx.beginPath();
+      ctx.moveTo(bx+12, by+30); ctx.lineTo(bx+16, by+34);
+      ctx.lineTo(bx+12, by+38); ctx.lineTo(bx+8,  by+34);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else if (testShape === 'ring') {
       ctx.beginPath(); ctx.arc(bx + 12, by + 34, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     } else if (testShape === 'diamond') {
       const r = 4;
@@ -417,13 +435,13 @@ export class BaseSimulation {
     const Ye = project(-1,  1, -1);
     const Ze = project(-1, -1,  1);
 
-    // Classification: X=f1, Y=f2(vertical), Z=f3
-    // Regression 2-feat surface: X=f1, Y=target(vertical), Z=f2
-    // Regression 3-feat bubble:  X=f1, Y=f2(vertical), Z=f3
+    // Classification:        X=f1, Y=f2(vertical), Z=f3
+    // Regression 2-feat:     X=f1, Y=target(vertical), Z=f2
+    // Regression 3-feat bubble: X=f1, Y=f2(vertical, training feat), Z=f3(visual only)
     const axLabels = isBubble
-      ? [[Xe, dataStore.xLabel  || 'x₁'],
-         [Ye, dataStore.yLabel  || 'x₂'],
-         [Ze, dataStore.zLabel  || 'x₃']]
+      ? [[Xe, dataStore.xLabel  || 'f1'],
+         [Ye, dataStore.zLabel  || 'f2'],   // zLabel = f2 (training feat 2, visual Y)
+         [Ze, dataStore.wLabel  || 'f3']]   // wLabel = f3 (visual Z only)
       : isReg
         ? [[Xe, dataStore.xLabel  || 'x₁'],
            [Ye, dataStore.targetName || 'y'],
@@ -455,7 +473,10 @@ export class BaseSimulation {
     const testPts   = showTest ? (this.testPoints || []).map(pt => ({ ...pt, _train: false })) : [];
 
     const projected = [...trainPts, ...testPts].map(pt => {
-      const { sx, sy, depth } = project(pt.x, pt.y ?? 0, pt.z ?? 0);
+      // Bubble chart: axes are (f1=pt.x, f2=pt.z, f3=pt.f3) — pt.z is training feat 2
+      const py = isBubble ? (pt.z  ?? 0) : (pt.y  ?? 0);
+      const pz = isBubble ? (pt.f3 ?? 0) : (pt.z  ?? 0);
+      const { sx, sy, depth } = project(pt.x, py, pz);
       return { pt, sx, sy, depth };
     });
     projected.sort((a, b) => a.depth - b.depth);
@@ -475,19 +496,52 @@ export class BaseSimulation {
           ctx.fill(); ctx.stroke();
         }
       } else if (isBubble) {
-        // Bubble chart: color = target value; train=filled, test=hollow ring
-        const t  = pt.target ?? 0.5;
-        const cr = Math.round(30  + t * 190);
-        const cg = Math.round(60  + (1 - Math.abs(t - 0.5) * 2) * 100);
-        const cb = Math.round(220 - t * 190);
-        const sz = 3 + t * 4;
-        if (pt._train) {
-          ctx.beginPath(); ctx.arc(sx, sy, sz, 0, Math.PI * 2);
-          ctx.fillStyle   = `rgba(${cr},${cg},${cb},0.80)`; ctx.fill();
-          ctx.strokeStyle = `rgba(${cr},${cg},${cb},0.95)`; ctx.lineWidth = 0.8; ctx.stroke();
+        // Shape: octahedron (diamond) — color = predicted target, size = actual target
+        // Before training: color = actual target; after: color = predicted target
+        const tActual = pt.target ?? 0.5;  // actual target [0,1]
+        let tPred;
+        if (hasTrained && typeof this.predict === 'function') {
+          const pred = this.predict(pt.x, pt.z ?? 0); // predict(f1, f2) → target ∈ [-1,1]
+          tPred = Math.max(0, Math.min(1, (pred + 1) / 2));
         } else {
-          // Test: hollow ring — white fill + colored thick border
-          ctx.beginPath(); ctx.arc(sx, sy, sz + 1.5, 0, Math.PI * 2);
+          tPred = tActual;
+        }
+        const sz = 4 + tActual * 5; // size = actual target
+        const cr = Math.round(30  + tPred * 190);
+        const cg = Math.round(60  + (1 - Math.abs(tPred - 0.5) * 2) * 100);
+        const cb = Math.round(220 - tPred * 190);
+
+        // How well does prediction match actual? (0 = off, 1 = perfect)
+        const matchScore = hasTrained ? Math.max(0, 1 - Math.abs(tPred - tActual) * 4) : 0;
+
+        // Draw octahedron (diamond) shape
+        const drawOct = (x, y, r) => {
+          ctx.beginPath();
+          ctx.moveTo(x,     y - r);
+          ctx.lineTo(x + r, y);
+          ctx.lineTo(x,     y + r);
+          ctx.lineTo(x - r, y);
+          ctx.closePath();
+        };
+
+        if (pt._train) {
+          // Fill with prediction color
+          drawOct(sx, sy, sz);
+          ctx.fillStyle   = `rgba(${cr},${cg},${cb},0.82)`; ctx.fill();
+          // Outer border: bright white when perfect match, muted otherwise
+          ctx.strokeStyle = matchScore > 0.8
+            ? `rgba(255,255,255,${0.4 + matchScore * 0.6})`
+            : `rgba(${cr},${cg},${cb},0.95)`;
+          ctx.lineWidth = matchScore > 0.8 ? 1.5 : 0.8; ctx.stroke();
+          // Perfect match glow ring
+          if (matchScore > 0.85) {
+            drawOct(sx, sy, sz + 2.5);
+            ctx.strokeStyle = `rgba(255,255,255,${(matchScore - 0.85) * 5})`;
+            ctx.lineWidth = 1; ctx.stroke();
+          }
+        } else {
+          // Test: hollow octahedron — white fill + colored thick border
+          drawOct(sx, sy, sz + 1.5);
           ctx.fillStyle   = 'rgba(255,255,255,0.55)';
           ctx.strokeStyle = `rgba(${cr},${cg},${cb},1.0)`;
           ctx.lineWidth   = 2; ctx.fill(); ctx.stroke();
@@ -513,16 +567,19 @@ export class BaseSimulation {
     ctx.save();
     ctx.fillStyle   = dark ? 'rgba(15,23,42,0.88)' : 'rgba(255,255,255,0.88)';
     ctx.strokeStyle = dark ? '#334155' : '#e2e8f0'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.roundRect(8, 8, 330, 48, 6); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(8, 8, isBubble ? 440 : 330, 48, 6); ctx.fill(); ctx.stroke();
     ctx.fillStyle = dark ? '#94a3b8' : '#475569';
     ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     if (isBubble) {
-      ctx.fillText('3D bubble  •  ' +
-        (dataStore.xLabel || 'x₁') + ' / ' + (dataStore.yLabel || 'x₂') + ' / ' + (dataStore.zLabel || 'x₃') +
-        '  •  color = ' + (dataStore.wLabel || 'target'), 14, 22);
+      ctx.fillText('3D octahedron  •  trains ' +
+        (dataStore.xLabel || 'f1') + ' + ' + (dataStore.zLabel || 'f2') +
+        ' → ' + (dataStore.targetName || 'target') +
+        '  [' + (dataStore.wLabel || 'f3') + ' = visual Z]', 14, 22);
       ctx.fillStyle = dark ? '#64748b' : '#94a3b8';
       ctx.font = '10px sans-serif';
-      ctx.fillText('Run = auto-rotate  •  Drag to control', 14, 40);
+      ctx.fillText(hasTrained
+        ? '◆ color = predicted ' + (dataStore.targetName || 'target') + '  •  size = actual  •  white glow = exact match'
+        : 'Run to train  •  ◆ color = predicted, size = actual  •  drag to rotate', 14, 40);
     } else if (isReg) {
       ctx.fillText('3D  •  Trains on ' +
         (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.zLabel || 'x₂') +
@@ -566,13 +623,14 @@ export class BaseSimulation {
       ctx.textAlign = 'right';
       ctx.fillText(max.toFixed(1), lx0 + lw, ly);
       ctx.textAlign = 'center';
-      ctx.fillText(dataStore.wLabel || 'target', lx0 + lw / 2, ly - lh - 3);
+      const legendLabel = (hasTrained ? '▶ pred ' : 'actual ') + (dataStore.targetName || 'target');
+      ctx.fillText(legendLabel, lx0 + lw / 2, ly - lh - 3);
       ctx.restore();
     }
 
     // ── Train / Test legend (bottom-right) ────────────────────────
     if (this.testPoints?.length > 0 && showTest)
-      this._drawTrainTestLegend(ctx, W, H, isBubble ? 'ring' : 'square');
+      this._drawTrainTestLegend(ctx, W, H, isBubble ? 'octahedron' : 'square');
   }
 
   // ── Classification metrics ──────────────────────────────────────
