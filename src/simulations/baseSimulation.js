@@ -217,8 +217,8 @@ export class BaseSimulation {
     ctx.restore();
   }
 
-  // Train/Test legend (bottom-right or top-right area)
-  _drawTrainTestLegend(ctx, W, H) {
+  // Train/Test legend (bottom-right). testShape: 'square'|'diamond'|'ring'
+  _drawTrainTestLegend(ctx, W, H, testShape = 'square') {
     if (!this.testPoints?.length) return;
     const dark = document.documentElement.dataset.theme === 'dark';
     const bg   = dark ? 'rgba(15,23,42,0.88)' : 'rgba(255,255,255,0.88)';
@@ -237,9 +237,19 @@ export class BaseSimulation {
     ctx.fillStyle = txt; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText(`Train (${this.points?.length ?? '?'})`, bx + 20, by + 14);
 
-    // Test marker (hollow square)
+    // Test marker
     ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1.5; ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.beginPath(); ctx.rect(bx + 8, by + 30, 8, 8); ctx.fill(); ctx.stroke();
+    if (testShape === 'ring') {
+      ctx.beginPath(); ctx.arc(bx + 12, by + 34, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    } else if (testShape === 'diamond') {
+      const r = 4;
+      ctx.beginPath();
+      ctx.moveTo(bx+12, by+30); ctx.lineTo(bx+16, by+34);
+      ctx.lineTo(bx+12, by+38); ctx.lineTo(bx+8,  by+34);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.rect(bx + 8, by + 30, 8, 8); ctx.fill(); ctx.stroke();
+    }
     ctx.fillStyle = txt;
     ctx.fillText(`Test  (${this.testPoints.length})`, bx + 20, by + 34);
 
@@ -440,8 +450,9 @@ export class BaseSimulation {
     });
 
     // ── Data points (painter's algorithm: far → near) ──────────────
-    const trainPts = (this.points    || []).map(pt => ({ ...pt, _train: true  }));
-    const testPts  = (this.testPoints || []).map(pt => ({ ...pt, _train: false }));
+    const showTest  = this.showTestOverlay !== false;
+    const trainPts  = (this.points    || []).map(pt => ({ ...pt, _train: true  }));
+    const testPts   = showTest ? (this.testPoints || []).map(pt => ({ ...pt, _train: false })) : [];
 
     const projected = [...trainPts, ...testPts].map(pt => {
       const { sx, sy, depth } = project(pt.x, pt.y ?? 0, pt.z ?? 0);
@@ -464,15 +475,23 @@ export class BaseSimulation {
           ctx.fill(); ctx.stroke();
         }
       } else if (isBubble) {
-        // Bubble chart: color encodes target value, size slightly larger
+        // Bubble chart: color = target value; train=filled, test=hollow ring
         const t  = pt.target ?? 0.5;
-        const r  = Math.round(30  + t * 190);
-        const g  = Math.round(60  + (1 - Math.abs(t - 0.5) * 2) * 100);
-        const b  = Math.round(220 - t * 190);
-        const sz = 3 + t * 4; // radius 3–7 based on target
-        ctx.beginPath(); ctx.arc(sx, sy, sz, 0, Math.PI * 2);
-        ctx.fillStyle   = `rgba(${r},${g},${b},0.80)`; ctx.fill();
-        ctx.strokeStyle = `rgba(${r},${g},${b},0.95)`; ctx.lineWidth = 0.8; ctx.stroke();
+        const cr = Math.round(30  + t * 190);
+        const cg = Math.round(60  + (1 - Math.abs(t - 0.5) * 2) * 100);
+        const cb = Math.round(220 - t * 190);
+        const sz = 3 + t * 4;
+        if (pt._train) {
+          ctx.beginPath(); ctx.arc(sx, sy, sz, 0, Math.PI * 2);
+          ctx.fillStyle   = `rgba(${cr},${cg},${cb},0.80)`; ctx.fill();
+          ctx.strokeStyle = `rgba(${cr},${cg},${cb},0.95)`; ctx.lineWidth = 0.8; ctx.stroke();
+        } else {
+          // Test: hollow ring — white fill + colored thick border
+          ctx.beginPath(); ctx.arc(sx, sy, sz + 1.5, 0, Math.PI * 2);
+          ctx.fillStyle   = 'rgba(255,255,255,0.55)';
+          ctx.strokeStyle = `rgba(${cr},${cg},${cb},1.0)`;
+          ctx.lineWidth   = 2; ctx.fill(); ctx.stroke();
+        }
       } else {
         if (pt._train) {
           ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2);
@@ -515,29 +534,32 @@ export class BaseSimulation {
     ctx.fillText('Drag to rotate  •  Touch supported', 14, 40);
     ctx.restore();
 
-    // ── Bubble chart color legend ──────────────────────────────────
+    // ── Bubble chart color legend (bottom-left) ───────────────────
     if (isBubble && dataStore.targetRange) {
-      const lx = W - 14, ly = H - 12, lw = 90, lh = 10;
-      const grad = ctx.createLinearGradient(lx - lw, 0, lx, 0);
+      const lw = 90, lh = 10;
+      const lx0 = 10, ly = H - 12;
+      const grad = ctx.createLinearGradient(lx0, 0, lx0 + lw, 0);
       grad.addColorStop(0, 'rgb(30,60,220)');
       grad.addColorStop(0.5, 'rgb(60,160,120)');
       grad.addColorStop(1, 'rgb(220,60,30)');
       ctx.save();
       ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.roundRect(lx - lw, ly - lh, lw, lh, 3); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(lx0, ly - lh, lw, lh, 3); ctx.fill();
       ctx.fillStyle = dark ? '#94a3b8' : '#475569';
-      ctx.font = '9px sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      ctx.font = '9px sans-serif'; ctx.textBaseline = 'bottom';
       const { min, max } = dataStore.targetRange;
-      ctx.fillText(min.toFixed(2), lx - lw - 2, ly);
+      ctx.textAlign = 'right';
+      ctx.fillText(min.toFixed(2), lx0 - 2, ly);
       ctx.textAlign = 'left';
-      ctx.fillText(max.toFixed(2), lx + 2, ly);
+      ctx.fillText(max.toFixed(2), lx0 + lw + 2, ly);
       ctx.textAlign = 'center';
-      ctx.fillText(dataStore.wLabel || 'target', lx - lw / 2, ly - lh - 2);
+      ctx.fillText(dataStore.wLabel || 'target', lx0 + lw / 2, ly - lh - 2);
       ctx.restore();
     }
 
-    // ── Train / Test legend ────────────────────────────────────────
-    if (this.testPoints?.length > 0) this._drawTrainTestLegend(ctx, W, H);
+    // ── Train / Test legend (bottom-right) ────────────────────────
+    if (this.testPoints?.length > 0 && showTest)
+      this._drawTrainTestLegend(ctx, W, H, isBubble ? 'ring' : 'square');
   }
 
   // ── Classification metrics ──────────────────────────────────────

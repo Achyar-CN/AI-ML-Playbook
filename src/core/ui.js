@@ -557,11 +557,13 @@ export class UIController {
     const fmt = document.createElement('p');
     fmt.className = 'csv-format-hint';
     if (sim.taskType === 'regression') {
-      fmt.innerHTML = 'Format: <b>f1[,f2[,f3]],target</b> (header optional)<br>'
-        + '1 feat → 2D  |  2 feats → 3D surface  |  3 feats → <b>3D bubble</b>';
+      fmt.innerHTML = 'Format: <b>feature1[,feature2[,feature3]],target</b><br>'
+        + 'e.g. <code>age,income,score,salary</code> (header recommended)<br>'
+        + '1 feat → 2D line  |  2 feats → 3D surface  |  3 feats → <b>3D bubble</b>';
     } else {
-      fmt.innerHTML = 'Format: <b>f1,f2[,f3,...],label</b><br>'
-        + '2 feats → 2D  |  3 feats → <b>3D volume</b>  |  4+ feats → select 2–3 below';
+      fmt.innerHTML = 'Format: <b>feature1,feature2[,feature3,...],label</b><br>'
+        + 'e.g. <code>height,weight,bmi,obese</code>  (label = 0 or 1)<br>'
+        + '2 feats → 2D boundary  |  3 feats → <b>3D volume</b>  |  4+ → select below';
     }
     wrap.appendChild(fmt);
 
@@ -1229,6 +1231,7 @@ export class UIController {
       }
     }
 
+    this.simulationManager.stop(); // ensure wasRunning=false → no auto-restart
     this.simulationManager.updateCurrentParams({});
     this.renderDataParams(sim);
     this.setStatus('ready');

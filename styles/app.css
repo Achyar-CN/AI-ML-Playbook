@@ -442,6 +442,8 @@ input[type="checkbox"].toggle:checked::before { left: 17px; }
 .csv-clear-btn:disabled { opacity: .4; cursor: not-allowed; }
 .csv-format-hint { font-size: .68rem; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
 .csv-format-hint b { color: var(--text-secondary); }
+.csv-format-hint code { font-family: monospace; font-size: .72rem; background: var(--surface-alt,#f1f5f9); padding: 0 3px; border-radius: 3px; color: var(--text-secondary); }
+[data-theme="dark"] .csv-format-hint code { background: rgba(255,255,255,.07); }
 
 /* ── Feature config (appears after CSV upload) ── */
 .csv-feature-config {
