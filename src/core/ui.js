@@ -564,7 +564,7 @@ export class UIController {
         + 'e.g. height,weight,bmi,obese  (label must be 0 or 1)\n'
         + '2 features → 2D decision boundary\n'
         + '3 features → 3D volumetric boundary\n'
-        + '4+ features → select 2 or 3 below';
+        + '4+ features → PCA reduced to 2D automatically';
     const fmtIcon = this._buildTooltipIcon(fmtTip);
     if (fmtIcon) {
       fmtIcon.style.marginLeft = '6px';
@@ -700,37 +700,44 @@ export class UIController {
 
           const labels = raw.map(r => r[nFeat] === 1 ? 1 : 0);
 
-          // Default: use first min(nFeat, 3) features
+          // Default: first 3 features (or all if fewer); 4+ → PCA
           const defaultSel = Array.from({ length: Math.min(nFeat, 3) }, (_, i) => i);
           dataStore.selectedFeatIdxs = defaultSel;
           const selNames = defaultSel.map(i => featNames[i]);
 
-          if (defaultSel.length < 2) {
+          if (nFeat >= 4) {
+            // ── 4+ features → PCA all features → 2D scatter ──────────
+            const allIdxs    = Array.from({ length: nFeat }, (_, i) => i);
+            const featMatrix = raw.map(r => allIdxs.map(i => r[i]));
+            dataStore.selectedFeatIdxs = allIdxs;
+            const pca = computePCA(featMatrix);
+            const pct = pca.varExplained.map(v => Math.round(v * 100));
+            dataStore.points  = pca.projected.map(([x, y], i) => ({ x, y, label: labels[i] }));
+            dataStore.xLabel  = `PC1 (${pct[0]}%)`;
+            dataStore.yLabel  = `PC2 (${pct[1]}%)`;
+            dataStore.is3D    = false;
+            dataStore.pcaInfo = { varExplained: pca.varExplained };
+          } else if (defaultSel.length < 2) {
             // ── 1D edge case: only 1 feature, use index as second axis ─
             const nx = norm1D(raw.map(r => r[defaultSel[0]]));
-            const ny = raw.map((_, i) => (i / (raw.length - 1)) * 2 - 1); // point index
+            const ny = raw.map((_, i) => (i / (raw.length - 1)) * 2 - 1);
             dataStore.points = nx.map((x, i) => ({ x, y: ny[i], label: labels[i] }));
-            dataStore.xLabel = selNames[0];
-            dataStore.yLabel = 'index';
+            dataStore.xLabel = selNames[0]; dataStore.yLabel = 'index';
             dataStore.is3D   = false;
           } else if (defaultSel.length === 2) {
-            // ── 2D: two features ────────────────────────────────
+            // ── 2D: two features ─────────────────────────────────────
             const nx = norm1D(raw.map(r => r[defaultSel[0]]));
             const ny = norm1D(raw.map(r => r[defaultSel[1]]));
             dataStore.points = nx.map((x, i) => ({ x, y: ny[i], label: labels[i] }));
-            dataStore.xLabel = selNames[0];
-            dataStore.yLabel = selNames[1];
+            dataStore.xLabel = selNames[0]; dataStore.yLabel = selNames[1];
             dataStore.is3D   = false;
-
           } else {
-            // ── 3D: three features (default for ≥3-feature CSVs) ─
+            // ── 3D: three features ────────────────────────────────────
             const nx = norm1D(raw.map(r => r[defaultSel[0]]));
             const ny = norm1D(raw.map(r => r[defaultSel[1]]));
             const nz = norm1D(raw.map(r => r[defaultSel[2]]));
             dataStore.points = nx.map((x, i) => ({ x, y: ny[i], z: nz[i], label: labels[i] }));
-            dataStore.xLabel = selNames[0];
-            dataStore.yLabel = selNames[1];
-            dataStore.zLabel = selNames[2];
+            dataStore.xLabel = selNames[0]; dataStore.yLabel = selNames[1]; dataStore.zLabel = selNames[2];
             dataStore.is3D   = true;
           }
 
@@ -1108,7 +1115,8 @@ export class UIController {
     checkboxWrap.className = 'feat-checkboxes';
 
     const curSel = new Set(dataStore.selectedFeatIdxs || []);
-    const maxSel = 3;
+    // No hard cap — PCA kicks in above thresholds (class ≥4, reg ≥3)
+    const maxSel = dataStore.featureNames.length;
 
     dataStore.featureNames.forEach((name, idx) => {
       const lbl = document.createElement('label');
@@ -1129,14 +1137,15 @@ export class UIController {
     const updatePreview = () => {
       const n = checkboxWrap.querySelectorAll('input:checked').length;
       if (sim.taskType === 'classification') {
-        if (n === 2) preview.textContent = `→ 2D scatter with decision boundary`;
-        else if (n === 3) preview.textContent = `→ 3D scatter with volumetric boundary`;
-        else preview.textContent = `Select 2 features (2D) or 3 features (3D)`;
+        if (n === 2)      preview.textContent = `→ 2D scatter + decision boundary`;
+        else if (n === 3) preview.textContent = `→ 3D scatter + volumetric boundary`;
+        else if (n >= 4)  preview.textContent = `→ PCA (${n}→2) then 2D scatter`;
+        else              preview.textContent = `Select 2 features (2D) or 3 features (3D) or 4+ (PCA→2D)`;
       } else {
-        if (n === 1) preview.textContent = `→ 2D line fit`;
+        if (n === 1)      preview.textContent = `→ 2D line fit`;
         else if (n === 2) preview.textContent = `→ 3D surface fit`;
-        else if (n >= 3) preview.textContent = `→ PCA (${n}→2) then 3D surface fit`;
-        else preview.textContent = `Select 1–2 features (or 3+ for PCA)`;
+        else if (n >= 3)  preview.textContent = `→ PCA (${n}→2) then 3D surface fit`;
+        else              preview.textContent = `Select 1 feature (2D) or 2 features (3D) or 3+ (PCA→3D)`;
       }
     };
 
@@ -1201,6 +1210,15 @@ export class UIController {
         dataStore.points = nx.map((x, i) => ({ x, y: ny[i], z: nz[i], label: labels[i] }));
         dataStore.xLabel = selNames[0]; dataStore.yLabel = selNames[1]; dataStore.zLabel = selNames[2];
         dataStore.is3D   = true;
+      } else if (selectedIdxs.length >= 4) {
+        // 4+ features → PCA → 2D scatter
+        const featMatrix = raw.map(r => selectedIdxs.map(i => r[i]));
+        const pca = computePCA(featMatrix);
+        const pct = pca.varExplained.map(v => Math.round(v * 100));
+        dataStore.points  = pca.projected.map(([x, y], i) => ({ x, y, label: labels[i] }));
+        dataStore.xLabel  = `PC1 (${pct[0]}%)`; dataStore.yLabel = `PC2 (${pct[1]}%)`;
+        dataStore.is3D    = false;
+        dataStore.pcaInfo = { varExplained: pca.varExplained };
       }
     } else {
       const ny   = norm1D(raw.map(r => r[nFeat]));
