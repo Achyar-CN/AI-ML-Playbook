@@ -443,6 +443,42 @@ input[type="checkbox"].toggle:checked::before { left: 17px; }
 .csv-format-hint { font-size: .68rem; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
 .csv-format-hint b { color: var(--text-secondary); }
 
+/* ── Feature config (appears after CSV upload) ── */
+.csv-feature-config {
+  margin-top: 10px; padding: 8px 10px;
+  background: var(--surface-alt, #f8fafc);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+}
+[data-theme="dark"] .csv-feature-config { background: rgba(255,255,255,.03); }
+.feat-config-title {
+  font-size: .66rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--text-muted); margin-bottom: 7px;
+}
+.feat-checkboxes { display: flex; flex-wrap: wrap; gap: 5px 10px; margin-bottom: 8px; }
+.feat-checkbox-label {
+  display: flex; align-items: center; gap: 4px;
+  font-size: .72rem; color: var(--text-secondary); cursor: pointer;
+  padding: 2px 6px 2px 3px; border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  transition: background .15s, border-color .15s;
+}
+.feat-checkbox-label:has(input:checked) {
+  background: rgba(59,130,246,.10); border-color: var(--primary);
+  color: var(--primary); font-weight: 600;
+}
+.feat-checkbox-label input { cursor: pointer; accent-color: var(--primary); }
+.feat-config-preview {
+  font-size: .7rem; color: var(--text-muted); margin-bottom: 7px;
+  font-style: italic; min-height: 14px;
+}
+.feat-apply-btn {
+  width: 100%; padding: 5px; font-size: .75rem; font-weight: 600;
+  background: var(--primary); color: #fff; border: none; border-radius: 5px;
+  cursor: pointer; transition: opacity .15s;
+}
+.feat-apply-btn:hover { opacity: .88; }
+
 /* ── Collapsible panels ── */
 .panel-collapse-header {
   display: flex; align-items: center; justify-content: space-between;

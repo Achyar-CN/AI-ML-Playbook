@@ -77,9 +77,12 @@ export class SimulationManager {
       if (!this._running) return;
 
       if (this._lastStepTime === 0 || timestamp - this._lastStepTime >= stepInterval) {
-        this.current.step();
-        // Inject test-set metrics into the freshly pushed history entry
-        this.current._injectTestMetrics();
+        // Skip training in bubble-chart mode (3-feature regression, display only)
+        if (!this.current._isBubbleChart) {
+          this.current.step();
+          // Inject test-set metrics into the freshly pushed history entry
+          this.current._injectTestMetrics();
+        }
         this._lastStepTime = timestamp;
         if (typeof this.onMetricsUpdate === 'function') {
           this.onMetricsUpdate(this.current.history || []);

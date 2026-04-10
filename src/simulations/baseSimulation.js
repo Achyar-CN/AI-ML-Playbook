@@ -35,8 +35,10 @@ export class BaseSimulation {
 
   // Getter: true when CSV is 3D regression (2 features + target).
   // Subclasses use this without needing to import dataStore directly.
-  get _is3DReg()   { return dataStore.is3D && dataStore.type === 'regression'; }
-  get _is3DClass() { return dataStore.is3D && dataStore.type === 'classification'; }
+  get _is3DReg()      { return dataStore.is3D && dataStore.type === 'regression' && dataStore.regFeatures !== 3; }
+  get _is3DClass()    { return dataStore.is3D && dataStore.type === 'classification'; }
+  // Bubble chart mode: 3-feature regression, no training, just display
+  get _isBubbleChart(){ return dataStore.regFeatures === 3; }
 
   // ── Public render entry-point called by SimulationManager ───────
   renderWithOverlays() {
@@ -358,9 +360,12 @@ export class BaseSimulation {
       });
     }
 
+    // ── Regression bubble chart (regFeatures===3): no surface, just colored bubbles ─
+    const isBubble = isReg && dataStore.regFeatures === 3;
+
     // ── Regression: prediction surface mesh ────────────────────────
     // Surface at (fx, predict(fx,fz), fz) — X=f1, Y=predicted target, Z=f2
-    if (isReg && hasTrained) {
+    if (isReg && !isBubble && hasTrained) {
       const G    = 20;
       const step = 2 / G;
       const grid = [];
@@ -402,15 +407,20 @@ export class BaseSimulation {
     const Ye = project(-1,  1, -1);
     const Ze = project(-1, -1,  1);
 
-    // Classification: X=f1 label, Y=f2 label (vertical), Z=f3 label
-    // Regression:     X=f1 label, Y=target label (vertical), Z=f2 label
-    const axLabels = isReg
+    // Classification: X=f1, Y=f2(vertical), Z=f3
+    // Regression 2-feat surface: X=f1, Y=target(vertical), Z=f2
+    // Regression 3-feat bubble:  X=f1, Y=f2(vertical), Z=f3
+    const axLabels = isBubble
       ? [[Xe, dataStore.xLabel  || 'x₁'],
-         [Ye, dataStore.targetName || 'y'],
-         [Ze, dataStore.zLabel  || 'x₂']]
-      : [[Xe, dataStore.xLabel  || 'x₁'],
          [Ye, dataStore.yLabel  || 'x₂'],
-         [Ze, dataStore.zLabel  || 'x₃']];
+         [Ze, dataStore.zLabel  || 'x₃']]
+      : isReg
+        ? [[Xe, dataStore.xLabel  || 'x₁'],
+           [Ye, dataStore.targetName || 'y'],
+           [Ze, dataStore.zLabel  || 'x₂']]
+        : [[Xe, dataStore.xLabel  || 'x₁'],
+           [Ye, dataStore.yLabel  || 'x₂'],
+           [Ze, dataStore.zLabel  || 'x₃']];
 
     axLabels.forEach(([end, label]) => {
       ctx.strokeStyle = axC; ctx.lineWidth = 1.8;
@@ -441,29 +451,34 @@ export class BaseSimulation {
 
     projected.forEach(({ pt, sx, sy }) => {
       if (isClass) {
-        const solid  = pt.label === 1 ? '#1565c0' : '#c62828';
-        const hollow = pt.label === 1 ? 'rgba(21,101,192,0.25)' : 'rgba(198,40,40,0.25)';
+        const solid = pt.label === 1 ? '#1565c0' : '#c62828';
         if (pt._train) {
-          // Train: filled circle
           ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
           ctx.fillStyle   = solid; ctx.fill();
           ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
         } else {
-          // Test: hollow square (consistent with 2D overlay)
           const r = 5;
           ctx.fillStyle   = 'rgba(255,255,255,0.55)';
           ctx.strokeStyle = solid; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.rect(sx - r, sy - r, r * 2, r * 2);
           ctx.fill(); ctx.stroke();
         }
+      } else if (isBubble) {
+        // Bubble chart: color encodes target value, size slightly larger
+        const t  = pt.target ?? 0.5;
+        const r  = Math.round(30  + t * 190);
+        const g  = Math.round(60  + (1 - Math.abs(t - 0.5) * 2) * 100);
+        const b  = Math.round(220 - t * 190);
+        const sz = 3 + t * 4; // radius 3–7 based on target
+        ctx.beginPath(); ctx.arc(sx, sy, sz, 0, Math.PI * 2);
+        ctx.fillStyle   = `rgba(${r},${g},${b},0.80)`; ctx.fill();
+        ctx.strokeStyle = `rgba(${r},${g},${b},0.95)`; ctx.lineWidth = 0.8; ctx.stroke();
       } else {
         if (pt._train) {
-          // Train: filled grey circle
           ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2);
           ctx.fillStyle   = '#64748b'; ctx.fill();
           ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
         } else {
-          // Test: hollow diamond (consistent with 2D overlay)
           const r = 4.5;
           ctx.fillStyle   = 'rgba(255,255,255,0.55)';
           ctx.strokeStyle = '#1d4ed8'; ctx.lineWidth = 1.5;
@@ -482,7 +497,11 @@ export class BaseSimulation {
     ctx.beginPath(); ctx.roundRect(8, 8, 330, 48, 6); ctx.fill(); ctx.stroke();
     ctx.fillStyle = dark ? '#94a3b8' : '#475569';
     ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    if (isReg) {
+    if (isBubble) {
+      ctx.fillText('3D bubble  •  ' +
+        (dataStore.xLabel || 'x₁') + ' / ' + (dataStore.yLabel || 'x₂') + ' / ' + (dataStore.zLabel || 'x₃') +
+        '  •  color = ' + (dataStore.wLabel || 'target'), 14, 22);
+    } else if (isReg) {
       ctx.fillText('3D  •  Trains on ' +
         (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.zLabel || 'x₂') +
         '  →  ' + (dataStore.targetName || 'y'), 14, 22);
@@ -495,6 +514,27 @@ export class BaseSimulation {
     ctx.font = '10px sans-serif';
     ctx.fillText('Drag to rotate  •  Touch supported', 14, 40);
     ctx.restore();
+
+    // ── Bubble chart color legend ──────────────────────────────────
+    if (isBubble && dataStore.targetRange) {
+      const lx = W - 14, ly = H - 12, lw = 90, lh = 10;
+      const grad = ctx.createLinearGradient(lx - lw, 0, lx, 0);
+      grad.addColorStop(0, 'rgb(30,60,220)');
+      grad.addColorStop(0.5, 'rgb(60,160,120)');
+      grad.addColorStop(1, 'rgb(220,60,30)');
+      ctx.save();
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.roundRect(lx - lw, ly - lh, lw, lh, 3); ctx.fill();
+      ctx.fillStyle = dark ? '#94a3b8' : '#475569';
+      ctx.font = '9px sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      const { min, max } = dataStore.targetRange;
+      ctx.fillText(min.toFixed(2), lx - lw - 2, ly);
+      ctx.textAlign = 'left';
+      ctx.fillText(max.toFixed(2), lx + 2, ly);
+      ctx.textAlign = 'center';
+      ctx.fillText(dataStore.wLabel || 'target', lx - lw / 2, ly - lh - 2);
+      ctx.restore();
+    }
 
     // ── Train / Test legend ────────────────────────────────────────
     if (this.testPoints?.length > 0) this._drawTrainTestLegend(ctx, W, H);

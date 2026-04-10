@@ -527,18 +527,24 @@ export class UIController {
     });
 
     clearBtn.addEventListener('click', () => {
-      dataStore.points       = null;
-      dataStore.type         = null;
-      dataStore.filename     = null;
-      dataStore.featureNames = [];
-      dataStore.targetName   = null;
-      dataStore.nFeatures    = 0;
-      dataStore.xLabel       = null;
-      dataStore.yLabel       = null;
-      dataStore.zLabel       = null;
-      dataStore.is3D         = false;
-      dataStore.pcaInfo      = null;
-      this._dataSourceMode   = 'scenario'; // go back to scenario tab after clear
+      dataStore.points           = null;
+      dataStore.type             = null;
+      dataStore.filename         = null;
+      dataStore.featureNames     = [];
+      dataStore.targetName       = null;
+      dataStore.nFeatures        = 0;
+      dataStore.xLabel           = null;
+      dataStore.yLabel           = null;
+      dataStore.zLabel           = null;
+      dataStore.wLabel           = null;
+      dataStore.is3D             = false;
+      dataStore.regFeatures      = 0;
+      dataStore.pcaInfo          = null;
+      dataStore.rawRows          = null;
+      dataStore.rawHeader        = null;
+      dataStore.selectedFeatIdxs = null;
+      dataStore.targetRange      = null;
+      this._dataSourceMode       = 'scenario';
       this.simulationManager.updateCurrentParams({});
       this.renderDataParams(sim);
     });
@@ -551,13 +557,20 @@ export class UIController {
     const fmt = document.createElement('p');
     fmt.className = 'csv-format-hint';
     if (sim.taskType === 'regression') {
-      fmt.innerHTML = 'Format: <b>f1[,f2],target</b> (header optional)<br>'
-        + '1 feature → 2D  |  2 features → <b>3D surface</b>';
+      fmt.innerHTML = 'Format: <b>f1[,f2[,f3]],target</b> (header optional)<br>'
+        + '1 feat → 2D  |  2 feats → 3D surface  |  3 feats → <b>3D bubble</b>';
     } else {
       fmt.innerHTML = 'Format: <b>f1,f2[,f3,...],label</b><br>'
-        + '2 features → 2D  |  3 features → <b>3D scatter</b>  |  4+ → <b>PCA 2D</b>';
+        + '2 feats → 2D  |  3 feats → <b>3D volume</b>  |  4+ feats → select 2–3 below';
     }
     wrap.appendChild(fmt);
+
+    // Store ref for feature config rendering
+    this._csvWrapEl = wrap;
+    // If data already loaded for this task, show feature config
+    if (dataStore.rawRows && dataStore.type === sim.taskType) {
+      this._renderFeatureConfig(sim);
+    }
 
     return wrap;
   }
@@ -582,17 +595,21 @@ export class UIController {
         };
 
         // Reset metadata
-        dataStore.featureNames = [];
-        dataStore.targetName   = null;
-        dataStore.nFeatures    = 0;
-        dataStore.xLabel       = null;
-        dataStore.yLabel       = null;
-        dataStore.zLabel       = null;
-        dataStore.is3D         = false;
-        dataStore.pcaInfo      = null;
+        dataStore.featureNames     = [];
+        dataStore.targetName       = null;
+        dataStore.nFeatures        = 0;
+        dataStore.xLabel           = null;
+        dataStore.yLabel           = null;
+        dataStore.zLabel           = null;
+        dataStore.wLabel           = null;
+        dataStore.is3D             = false;
+        dataStore.regFeatures      = 0;
+        dataStore.pcaInfo          = null;
+        dataStore.selectedFeatIdxs = null;
+        dataStore.targetRange      = null;
 
         if (sim.taskType === 'regression') {
-          // Regression: last column = target, earlier columns = features (1 or 2 supported)
+          // Regression: last column = target, earlier columns = features
           const nCols = dataRows[0]?.length ?? 0;
           if (nCols < 2) throw new Error('Need at least 2 columns (feature + target)');
 
@@ -605,28 +622,52 @@ export class UIController {
             : Array.from({ length: nFeat }, (_, i) => nFeat === 1 ? 'x' : `x${i + 1}`);
           const tName = headerRow?.[nFeat] ?? 'y';
 
-          dataStore.featureNames = featNames;
+          dataStore.featureNames = featNames; // ALL feature names
           dataStore.targetName   = tName;
           dataStore.nFeatures    = nFeat;
+          dataStore.rawRows      = raw;
+          dataStore.rawHeader    = headerRow;
 
-          const ny = norm1D(raw.map(r => r[nFeat])); // target always last
+          const ny = norm1D(raw.map(r => r[nFeat]));
 
-          if (nFeat === 1) {
-            // 2D: one feature + target
-            const nx = norm1D(raw.map(r => r[0]));
-            dataStore.xLabel = featNames[0];
-            dataStore.yLabel = tName;
-            dataStore.is3D   = false;
-            dataStore.points = nx.map((x, i) => ({ x, y: ny[i] }));
+          // Default selection: first min(nFeat, 3) features
+          const defaultSel = Array.from({ length: Math.min(nFeat, 3) }, (_, i) => i);
+          dataStore.selectedFeatIdxs = defaultSel;
+          const selFeatNames = defaultSel.map(i => featNames[i]);
+
+          if (nFeat === 1 || defaultSel.length === 1) {
+            const nx = norm1D(raw.map(r => r[defaultSel[0]]));
+            dataStore.xLabel      = selFeatNames[0];
+            dataStore.yLabel      = tName;
+            dataStore.is3D        = false;
+            dataStore.regFeatures = 1;
+            dataStore.points      = nx.map((x, i) => ({ x, y: ny[i] }));
+          } else if (defaultSel.length === 2) {
+            // 3D surface: two features + target
+            const nx = norm1D(raw.map(r => r[defaultSel[0]]));
+            const nz = norm1D(raw.map(r => r[defaultSel[1]]));
+            dataStore.xLabel      = selFeatNames[0];
+            dataStore.zLabel      = selFeatNames[1];
+            dataStore.yLabel      = tName;
+            dataStore.is3D        = true;
+            dataStore.regFeatures = 2;
+            dataStore.points      = nx.map((x, i) => ({ x, y: ny[i], z: nz[i] }));
           } else {
-            // 3D: two features + target  →  {x=f1, y=target, z=f2}
-            const nx = norm1D(raw.map(r => r[0]));
-            const nz = norm1D(raw.map(r => r[1]));
-            dataStore.xLabel     = featNames[0];
-            dataStore.zLabel     = featNames[1];
-            dataStore.yLabel     = tName; // y-axis (vertical) = target
-            dataStore.is3D       = true;
-            dataStore.points     = nx.map((x, i) => ({ x, y: ny[i], z: nz[i] }));
+            // 3D bubble chart: three features, target as color/size
+            const nx = norm1D(raw.map(r => r[defaultSel[0]]));
+            const ny2 = norm1D(raw.map(r => r[defaultSel[1]]));
+            const nz = norm1D(raw.map(r => r[defaultSel[2]]));
+            const rawTarget = raw.map(r => r[nFeat]);
+            const tMin = Math.min(...rawTarget), tMax = Math.max(...rawTarget);
+            const nt = rawTarget.map(v => (tMax === tMin) ? 0.5 : (v - tMin) / (tMax - tMin));
+            dataStore.xLabel      = selFeatNames[0];
+            dataStore.yLabel      = selFeatNames[1];
+            dataStore.zLabel      = selFeatNames[2];
+            dataStore.wLabel      = tName;
+            dataStore.is3D        = true;
+            dataStore.regFeatures = 3;
+            dataStore.targetRange = { min: tMin, max: tMax };
+            dataStore.points      = nx.map((x, i) => ({ x, y: ny2[i], z: nz[i], target: nt[i] }));
           }
 
           dataStore.type     = 'regression';
@@ -649,42 +690,46 @@ export class UIController {
             : Array.from({ length: nFeat }, (_, i) => `x${i + 1}`);
           const tName = headerRow?.[nFeat] ?? 'label';
 
-          dataStore.featureNames = featNames;
-          dataStore.targetName   = tName;
-          dataStore.nFeatures    = nFeat;
+          dataStore.featureNames     = featNames;
+          dataStore.targetName       = tName;
+          dataStore.nFeatures        = nFeat;
+          dataStore.rawRows          = raw;
+          dataStore.rawHeader        = headerRow;
 
           const labels = raw.map(r => r[nFeat] === 1 ? 1 : 0);
 
-          if (nFeat === 2) {
-            // ── 2D: direct mapping ──────────────────────────────
-            const nx = norm1D(raw.map(r => r[0]));
-            const ny = norm1D(raw.map(r => r[1]));
+          // Default: use first min(nFeat, 3) features
+          const defaultSel = Array.from({ length: Math.min(nFeat, 3) }, (_, i) => i);
+          dataStore.selectedFeatIdxs = defaultSel;
+          const selNames = defaultSel.map(i => featNames[i]);
+
+          if (defaultSel.length < 2) {
+            // ── 1D edge case: only 1 feature, use index as second axis ─
+            const nx = norm1D(raw.map(r => r[defaultSel[0]]));
+            const ny = raw.map((_, i) => (i / (raw.length - 1)) * 2 - 1); // point index
             dataStore.points = nx.map((x, i) => ({ x, y: ny[i], label: labels[i] }));
-            dataStore.xLabel = featNames[0];
-            dataStore.yLabel = featNames[1];
+            dataStore.xLabel = selNames[0];
+            dataStore.yLabel = 'index';
+            dataStore.is3D   = false;
+          } else if (defaultSel.length === 2) {
+            // ── 2D: two features ────────────────────────────────
+            const nx = norm1D(raw.map(r => r[defaultSel[0]]));
+            const ny = norm1D(raw.map(r => r[defaultSel[1]]));
+            dataStore.points = nx.map((x, i) => ({ x, y: ny[i], label: labels[i] }));
+            dataStore.xLabel = selNames[0];
+            dataStore.yLabel = selNames[1];
             dataStore.is3D   = false;
 
-          } else if (nFeat === 3) {
-            // ── 3D: three-feature scatter ───────────────────────
-            const nx = norm1D(raw.map(r => r[0]));
-            const ny = norm1D(raw.map(r => r[1]));
-            const nz = norm1D(raw.map(r => r[2]));
-            dataStore.points = nx.map((x, i) => ({ x, y: ny[i], z: nz[i], label: labels[i] }));
-            dataStore.xLabel = featNames[0];
-            dataStore.yLabel = featNames[1];
-            dataStore.zLabel = featNames[2];
-            dataStore.is3D   = true;
-
           } else {
-            // ── >3 features: PCA → 2D ───────────────────────────
-            const X = raw.map(r => r.slice(0, nFeat));
-            const { projected, varExplained } = computePCA(X);
-            const pct = varExplained.map(v => `${(v * 100).toFixed(0)}%`);
-            dataStore.points   = projected.map(([x, y], i) => ({ x, y, label: labels[i] }));
-            dataStore.xLabel   = `PC1 (${pct[0]})`;
-            dataStore.yLabel   = `PC2 (${pct[1]})`;
-            dataStore.pcaInfo  = { varExplained };
-            dataStore.is3D     = false;
+            // ── 3D: three features (default for ≥3-feature CSVs) ─
+            const nx = norm1D(raw.map(r => r[defaultSel[0]]));
+            const ny = norm1D(raw.map(r => r[defaultSel[1]]));
+            const nz = norm1D(raw.map(r => r[defaultSel[2]]));
+            dataStore.points = nx.map((x, i) => ({ x, y: ny[i], z: nz[i], label: labels[i] }));
+            dataStore.xLabel = selNames[0];
+            dataStore.yLabel = selNames[1];
+            dataStore.zLabel = selNames[2];
+            dataStore.is3D   = true;
           }
 
           dataStore.type     = 'classification';
@@ -1037,5 +1082,155 @@ export class UIController {
       ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI * 2);
       ctx.fillStyle = lineColor; ctx.fill();
     });
+  }
+
+  // ── Feature selection panel (shown after CSV upload) ──────────
+  _renderFeatureConfig(sim) {
+    if (!this._csvWrapEl) return;
+    const existing = this._csvWrapEl.querySelector('.csv-feature-config');
+    if (existing) existing.remove();
+    if (!dataStore.rawRows || !dataStore.featureNames.length) return;
+
+    const nFeat = dataStore.featureNames.length;
+    if (nFeat < 2 && sim.taskType === 'classification') return;
+
+    const panel = document.createElement('div');
+    panel.className = 'csv-feature-config';
+
+    const title = document.createElement('div');
+    title.className = 'feat-config-title';
+    title.textContent = 'Feature Selection';
+    panel.appendChild(title);
+
+    const checkboxWrap = document.createElement('div');
+    checkboxWrap.className = 'feat-checkboxes';
+
+    const curSel = new Set(dataStore.selectedFeatIdxs || []);
+    const maxSel = 3;
+
+    dataStore.featureNames.forEach((name, idx) => {
+      const lbl = document.createElement('label');
+      lbl.className = 'feat-checkbox-label';
+      const inp = document.createElement('input');
+      inp.type    = 'checkbox';
+      inp.value   = idx;
+      inp.checked = curSel.has(idx);
+      lbl.appendChild(inp);
+      lbl.appendChild(document.createTextNode(name));
+      checkboxWrap.appendChild(lbl);
+    });
+    panel.appendChild(checkboxWrap);
+
+    const preview = document.createElement('div');
+    preview.className = 'feat-config-preview';
+
+    const updatePreview = () => {
+      const n = checkboxWrap.querySelectorAll('input:checked').length;
+      if (sim.taskType === 'classification') {
+        if (n === 2) preview.textContent = `→ 2D scatter with decision boundary`;
+        else if (n === 3) preview.textContent = `→ 3D scatter with volumetric boundary`;
+        else preview.textContent = `Select 2 features (2D) or 3 features (3D)`;
+      } else {
+        if (n === 1) preview.textContent = `→ 2D line fit`;
+        else if (n === 2) preview.textContent = `→ 3D surface fit`;
+        else if (n === 3) preview.textContent = `→ 3D bubble chart (target = color)`;
+        else preview.textContent = `Select 1–3 features`;
+      }
+    };
+
+    checkboxWrap.querySelectorAll('input').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const checked = [...checkboxWrap.querySelectorAll('input:checked')];
+        if (checked.length > maxSel) { inp.checked = false; return; }
+        updatePreview();
+      });
+    });
+    updatePreview();
+    panel.appendChild(preview);
+
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'feat-apply-btn';
+    applyBtn.textContent = 'Apply';
+    applyBtn.addEventListener('click', () => {
+      const idxs = [...checkboxWrap.querySelectorAll('input:checked')].map(i => parseInt(i.value));
+      const minRequired = sim.taskType === 'classification' ? 2 : 1;
+      if (idxs.length < minRequired) {
+        alert(sim.taskType === 'classification'
+          ? 'Select at least 2 features.'
+          : 'Select at least 1 feature.');
+        return;
+      }
+      this._applyFeatureConfig(sim, idxs);
+    });
+    panel.appendChild(applyBtn);
+
+    this._csvWrapEl.appendChild(panel);
+  }
+
+  _applyFeatureConfig(sim, selectedIdxs) {
+    const raw = dataStore.rawRows;
+    if (!raw || !raw.length) return;
+
+    const norm1D = (vals) => {
+      const mn = Math.min(...vals), mx = Math.max(...vals);
+      return mx === mn ? vals.map(() => 0) : vals.map(v => 2 * (v - mn) / (mx - mn) - 1);
+    };
+
+    dataStore.selectedFeatIdxs = selectedIdxs;
+    dataStore.xLabel = null; dataStore.yLabel = null; dataStore.zLabel = null; dataStore.wLabel = null;
+    dataStore.is3D   = false; dataStore.regFeatures = 0; dataStore.pcaInfo = null;
+    dataStore.targetRange = null;
+
+    const featNames = dataStore.featureNames;
+    const selNames  = selectedIdxs.map(i => featNames[i]);
+    const nFeat     = dataStore.nFeatures;
+
+    if (sim.taskType === 'classification') {
+      const labels = raw.map(r => r[nFeat] === 1 ? 1 : 0);
+      if (selectedIdxs.length === 2) {
+        const nx = norm1D(raw.map(r => r[selectedIdxs[0]]));
+        const ny = norm1D(raw.map(r => r[selectedIdxs[1]]));
+        dataStore.points = nx.map((x, i) => ({ x, y: ny[i], label: labels[i] }));
+        dataStore.xLabel = selNames[0]; dataStore.yLabel = selNames[1];
+        dataStore.is3D   = false;
+      } else if (selectedIdxs.length === 3) {
+        const nx = norm1D(raw.map(r => r[selectedIdxs[0]]));
+        const ny = norm1D(raw.map(r => r[selectedIdxs[1]]));
+        const nz = norm1D(raw.map(r => r[selectedIdxs[2]]));
+        dataStore.points = nx.map((x, i) => ({ x, y: ny[i], z: nz[i], label: labels[i] }));
+        dataStore.xLabel = selNames[0]; dataStore.yLabel = selNames[1]; dataStore.zLabel = selNames[2];
+        dataStore.is3D   = true;
+      }
+    } else {
+      const ny   = norm1D(raw.map(r => r[nFeat]));
+      const tName = dataStore.targetName;
+      if (selectedIdxs.length === 1) {
+        const nx = norm1D(raw.map(r => r[selectedIdxs[0]]));
+        dataStore.xLabel = selNames[0]; dataStore.yLabel = tName;
+        dataStore.is3D = false; dataStore.regFeatures = 1;
+        dataStore.points = nx.map((x, i) => ({ x, y: ny[i] }));
+      } else if (selectedIdxs.length === 2) {
+        const nx = norm1D(raw.map(r => r[selectedIdxs[0]]));
+        const nz = norm1D(raw.map(r => r[selectedIdxs[1]]));
+        dataStore.xLabel = selNames[0]; dataStore.zLabel = selNames[1]; dataStore.yLabel = tName;
+        dataStore.is3D = true; dataStore.regFeatures = 2;
+        dataStore.points = nx.map((x, i) => ({ x, y: ny[i], z: nz[i] }));
+      } else if (selectedIdxs.length === 3) {
+        const nx  = norm1D(raw.map(r => r[selectedIdxs[0]]));
+        const ny2 = norm1D(raw.map(r => r[selectedIdxs[1]]));
+        const nz  = norm1D(raw.map(r => r[selectedIdxs[2]]));
+        const rawTarget = raw.map(r => r[nFeat]);
+        const tMin = Math.min(...rawTarget), tMax = Math.max(...rawTarget);
+        const nt = rawTarget.map(v => (tMax === tMin) ? 0.5 : (v - tMin) / (tMax - tMin));
+        dataStore.xLabel = selNames[0]; dataStore.yLabel = selNames[1]; dataStore.zLabel = selNames[2];
+        dataStore.wLabel = tName; dataStore.is3D = true; dataStore.regFeatures = 3;
+        dataStore.targetRange = { min: tMin, max: tMax };
+        dataStore.points = nx.map((x, i) => ({ x, y: ny2[i], z: nz[i], target: nt[i] }));
+      }
+    }
+
+    this.simulationManager.updateCurrentParams({});
+    this.renderDataParams(sim);
+    this.setStatus('ready');
   }
 }
