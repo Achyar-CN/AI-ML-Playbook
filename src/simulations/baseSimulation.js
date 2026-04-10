@@ -520,6 +520,9 @@ export class BaseSimulation {
       ctx.fillText('3D bubble  •  ' +
         (dataStore.xLabel || 'x₁') + ' / ' + (dataStore.yLabel || 'x₂') + ' / ' + (dataStore.zLabel || 'x₃') +
         '  •  color = ' + (dataStore.wLabel || 'target'), 14, 22);
+      ctx.fillStyle = dark ? '#64748b' : '#94a3b8';
+      ctx.font = '10px sans-serif';
+      ctx.fillText('Run = auto-rotate  •  Drag to control', 14, 40);
     } else if (isReg) {
       ctx.fillText('3D  •  Trains on ' +
         (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.zLabel || 'x₂') +
@@ -529,31 +532,41 @@ export class BaseSimulation {
         (dataStore.xLabel || 'x₁') + ' & ' + (dataStore.yLabel || 'x₂') +
         ' & ' + (dataStore.zLabel || 'x₃') + '  (volumetric boundary)', 14, 22);
     }
-    ctx.fillStyle = dark ? '#64748b' : '#94a3b8';
-    ctx.font = '10px sans-serif';
-    ctx.fillText('Drag to rotate  •  Touch supported', 14, 40);
+    if (!isBubble) {
+      ctx.fillStyle = dark ? '#64748b' : '#94a3b8';
+      ctx.font = '10px sans-serif';
+      ctx.fillText('Drag to rotate  •  Touch supported', 14, 40);
+    }
     ctx.restore();
 
-    // ── Bubble chart color legend (bottom-left) ───────────────────
+    // ── Bubble chart color legend (bottom-left, with padding) ────────
     if (isBubble && dataStore.targetRange) {
-      const lw = 90, lh = 10;
-      const lx0 = 10, ly = H - 12;
+      const lw = 90, lh = 10, pad = 10;
+      const lx0 = 8 + pad; // left edge + padding
+      const ly  = H - 10;
+      // Background panel
+      ctx.save();
+      ctx.fillStyle   = dark ? 'rgba(15,23,42,0.88)' : 'rgba(255,255,255,0.88)';
+      ctx.strokeStyle = dark ? '#334155' : '#e2e8f0'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(8, ly - lh - 20, lw + pad * 2, lh + 22, 5);
+      ctx.fill(); ctx.stroke();
+      // Color gradient bar
       const grad = ctx.createLinearGradient(lx0, 0, lx0 + lw, 0);
       grad.addColorStop(0, 'rgb(30,60,220)');
       grad.addColorStop(0.5, 'rgb(60,160,120)');
       grad.addColorStop(1, 'rgb(220,60,30)');
-      ctx.save();
       ctx.fillStyle = grad;
       ctx.beginPath(); ctx.roundRect(lx0, ly - lh, lw, lh, 3); ctx.fill();
+      // Labels
       ctx.fillStyle = dark ? '#94a3b8' : '#475569';
       ctx.font = '9px sans-serif'; ctx.textBaseline = 'bottom';
       const { min, max } = dataStore.targetRange;
-      ctx.textAlign = 'right';
-      ctx.fillText(min.toFixed(2), lx0 - 2, ly);
       ctx.textAlign = 'left';
-      ctx.fillText(max.toFixed(2), lx0 + lw + 2, ly);
+      ctx.fillText(min.toFixed(1), lx0, ly);
+      ctx.textAlign = 'right';
+      ctx.fillText(max.toFixed(1), lx0 + lw, ly);
       ctx.textAlign = 'center';
-      ctx.fillText(dataStore.wLabel || 'target', lx0 + lw / 2, ly - lh - 2);
+      ctx.fillText(dataStore.wLabel || 'target', lx0 + lw / 2, ly - lh - 3);
       ctx.restore();
     }
 

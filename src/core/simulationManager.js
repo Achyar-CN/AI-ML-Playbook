@@ -89,6 +89,11 @@ export class SimulationManager {
         }
       }
 
+      // Auto-rotate bubble chart when running (user can still drag to override)
+      if (this.current._isBubbleChart && !this.current._3dDrag) {
+        this.current._3dRotY = ((this.current._3dRotY ?? 0.62) + 0.006) % (Math.PI * 2);
+      }
+
       this.current.renderWithOverlays();
       this.frame = requestAnimationFrame(loop);
     };

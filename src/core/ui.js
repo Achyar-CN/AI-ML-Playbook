@@ -81,7 +81,8 @@ export class UIController {
   // ── Topbar ──────────────────────────────────────────────────
   _bindTopbarButtons() {
     document.getElementById('start-btn')?.addEventListener('click', () => {
-      this.setStatus('running');
+      const isBubble = this.simulationManager.current?._isBubbleChart;
+      this.setStatus(isBubble ? 'exploring' : 'running');
       this.simulationManager.start();
     });
     document.getElementById('pause-btn')?.addEventListener('click', () => {
@@ -161,13 +162,20 @@ export class UIController {
 
   setStatus(state) {
     if (!this.statusBadge) return;
-    const labels = { running: 'Running', paused: 'Paused', ready: 'Ready' };
+    const labels = { running: 'Running', paused: 'Paused', ready: 'Ready', exploring: 'Exploring' };
     this.statusBadge.textContent = labels[state] || state;
-    this.statusBadge.className   = `status-badge ${state === 'ready' ? '' : state}`.trim();
+    // 'exploring' uses same visual style as 'running'
+    const cssState = state === 'exploring' ? 'running' : state;
+    this.statusBadge.className   = `status-badge ${cssState === 'ready' ? '' : cssState}`.trim();
   }
 
   _updateEpoch(history) {
     if (!this.epochDisplay) return;
+    // Bubble chart: display-only, no epoch counter
+    if (this.simulationManager.current?._isBubbleChart) {
+      this.epochDisplay.textContent = 'Bubble chart';
+      return;
+    }
     // Always read max from the live params (reflects slider changes instantly)
     const p        = this.simulationManager.current?.params;
     const maxEpoch = p ? (p.epochs ?? p.nTrees ?? p.maxDepth ?? '?') : '?';
@@ -552,20 +560,26 @@ export class UIController {
     fileRow.appendChild(fileInput);
     fileRow.appendChild(fileLabel);
     fileRow.appendChild(clearBtn);
-    wrap.appendChild(fileRow);
 
-    const fmt = document.createElement('p');
-    fmt.className = 'csv-format-hint';
-    if (sim.taskType === 'regression') {
-      fmt.innerHTML = 'Format: <b>feature1[,feature2[,feature3]],target</b><br>'
-        + 'e.g. <code>age,income,score,salary</code> (header recommended)<br>'
-        + '1 feat → 2D line  |  2 feats → 3D surface  |  3 feats → <b>3D bubble</b>';
-    } else {
-      fmt.innerHTML = 'Format: <b>feature1,feature2[,feature3,...],label</b><br>'
-        + 'e.g. <code>height,weight,bmi,obese</code>  (label = 0 or 1)<br>'
-        + '2 feats → 2D boundary  |  3 feats → <b>3D volume</b>  |  4+ → select below';
+    // Format-hint tooltip "i" icon after Clear button
+    const fmtTip = sim.taskType === 'regression'
+      ? 'Format: feature1[,feature2[,feature3]],target — header row recommended.\n'
+        + 'e.g. age,income,score,salary\n'
+        + '1 feature → 2D line fit\n'
+        + '2 features → 3D surface fit\n'
+        + '3 features → 3D bubble chart (target = bubble color)'
+      : 'Format: feature1,feature2[,feature3,...],label — header row recommended.\n'
+        + 'e.g. height,weight,bmi,obese  (label must be 0 or 1)\n'
+        + '2 features → 2D decision boundary\n'
+        + '3 features → 3D volumetric boundary\n'
+        + '4+ features → select 2 or 3 below';
+    const fmtIcon = this._buildTooltipIcon(fmtTip);
+    if (fmtIcon) {
+      fmtIcon.style.marginLeft = '6px';
+      fileRow.appendChild(fmtIcon);
     }
-    wrap.appendChild(fmt);
+
+    wrap.appendChild(fileRow);
 
     // Store ref for feature config rendering
     this._csvWrapEl = wrap;
